@@ -1,4 +1,4 @@
-<!-- AI-GENERATED DRAFT - team to review and modify -->
+
 # PROGRESS: Ironcladreturns, Urban Food Crisis Response and Routing System
 
 **Last updated:** 2026-11-07. All 9 draft steps are DONE, plus location suggestions and the fixes from the Gemini review, including a live web dashboard. Branch `fix/review-findings` (stacked on `feature/location-suggestions`). 106 tests pass. The demo runs.

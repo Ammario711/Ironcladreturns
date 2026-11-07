@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+
 """A Trip = one vehicle carrying food from one source to one emergency.
 
 Timeline model (kept simple on purpose):

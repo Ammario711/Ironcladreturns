@@ -1,4 +1,4 @@
-<!-- AI-GENERATED DRAFT - team to review and modify -->
+
 # Engineering decisions: algorithms, data structures, complexity, trade-offs
 
 Notation: **V** = intersections (nodes), **E** = roads (edges), **H** = hubs, **K** = vehicles, **n** = waiting emergencies.

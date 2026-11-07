@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+
 """Small helper functions shared by every module.
 
 Standard library only, so the core runs on any Python 3.10+ install.

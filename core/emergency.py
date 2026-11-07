@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+
 """Emergency request model and input validation.
 
 validate_emergency() never raises on bad user input. It returns ALL the

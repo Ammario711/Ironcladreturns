@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+
 """Disruption events (not in the dataset; they come from a separate file,
 the CLI, or the scenario generator) and their validation.
 

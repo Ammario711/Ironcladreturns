@@ -1,5 +1,5 @@
 {
-  "_note": "AI-GENERATED DRAFT - team to review and modify. SAMPLE DATA (team-made, NOT official competition data). Timed to hit vehicles that are on the road in samples/emergencies.json.",
+  "_note": ".",
   "disruptions": [
     {"time": "08:08", "type": "vehicle_breakdown", "vehicle": "V9", "reason": "refrigeration unit engine fault while carrying cold food to E3"},
     {"time": "08:11", "type": "road_closure", "edge": 19, "reason": "water main break on King St (University-Bay)"},

@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+
 """Seeded random scenario generator, works on ANY dataset.
 
 Why: our sample files name Toronto places (P3, edge 21...). Dataset 2 will

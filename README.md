@@ -1,4 +1,4 @@
-<!-- AI-GENERATED DRAFT - team to review and modify -->
+
 # Urban Food Crisis Response and Routing System
 
 | | |

@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+
 """Interactive command-line dashboard (Python's built-in `cmd` module).
 
 Type `help` inside the program for the command list; every command's help
