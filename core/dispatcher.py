@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """Dispatcher: owns the trips.
 
 * dispatch_cycle  - pops emergencies in priority order and asks the matcher
@@ -362,7 +360,7 @@ class Dispatcher:
         vehicle = self.system.vehicles[trip.vehicle_id]
         self._charge_fuel(vehicle, -trip.remaining_km(self.system.graph, now))  # refund the unused route
         trip.status = BLOCKED
-        trip.nodes, trip.edges, trip.times = [here], [], [now]
+        trip.nodes, trip.edges, trip.times, trip.edge_costs = [here], [], [now], []
         trip.pickup_index = None
         self.system.vehicles[trip.vehicle_id].location = here
 

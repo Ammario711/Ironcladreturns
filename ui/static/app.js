@@ -1,7 +1,4 @@
-/* AI-GENERATED DRAFT - team to review and modify.
-   Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
-
-   Dashboard logic, plain JavaScript (no libraries, works offline).
+/* Dashboard logic, plain JavaScript (no libraries, works offline).
    How data flows:
      1. GET /state            -> `state` (everything to draw)          see refresh()
      2. GET /events (SSE)     -> each event-bus event, live             see connect()

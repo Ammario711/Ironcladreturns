@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """Weighted, undirected road graph with closable roads and intersections.
 
 Design notes (see DECISIONS.md for the full reasoning):

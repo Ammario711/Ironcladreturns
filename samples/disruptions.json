@@ -1,5 +1,5 @@
 {
-  "_note": "AI-GENERATED DRAFT - team to review and modify. SAMPLE DATA (team-made, NOT official competition data). A full morning in the city: every closure is reopened, every breakdown is repaired, a traffic collision slows Queen St and then clears, and food banks receive deliveries. Timed to hit vehicles that are on the road in samples/emergencies.json. Restocks are NORMAL food only (plus one small cold top-up), so E8's cold shortage stays as the limited-stock example.",
+  "_note": "SAMPLE DATA (team-made, NOT official competition data; see README.md for citations). A full morning in the city: every closure is reopened, every breakdown is repaired, a traffic collision slows Queen St and then clears, and food banks receive deliveries. Timed to hit vehicles that are on the road in samples/emergencies.json. Restocks are NORMAL food only (plus one small cold top-up), so E8's cold shortage stays as the limited-stock example.",
   "disruptions": [
     {"time": "08:08", "type": "vehicle_breakdown", "vehicle": "V9", "reason": "refrigeration unit engine fault while carrying cold food to E3"},
     {"time": "08:11", "type": "road_closure", "edge": 19, "reason": "water main break on King St (University-Bay)"},

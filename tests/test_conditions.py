@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """City conditions (weather, rush hour, traffic jams), the Open-Meteo weather
 snapshot loader, and the fuller sample city timeline.
 
@@ -10,23 +8,27 @@ import io
 import json
 import os
 import ssl
+import tempfile
 import unittest
 import urllib.error
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from unittest import mock
 
 import main
 from core.disruptions import parse_disruption
 from core.graph import Edge, Graph, Node
 from core.routing import find_route
+from core.scoring import compute_score
 from core.state_machine import CrisisState as S
+from core.trips import Trip
 from helpers import (ROOT, SAMPLE_DISRUPTIONS, SAMPLE_EMERGENCIES, check_invariants, config, make_system,
                      request, run_until)
 from loader.config_loader import ConfigError, apply_overrides
 from loader.input_loader import load_disruptions_file, load_emergencies_file
-from loader.weather_loader import (SYSTEM_CA_FILES, WeatherError, fetch_open_meteo, load_snapshot,
-                                   weather_condition, weather_disruptions)
+from loader.weather_loader import (SYSTEM_CA_FILES, WeatherError, city_point, fetch_open_meteo, load_snapshot,
+                                   save_snapshot, weather_condition, weather_disruptions)
 from sim.simulator import Simulator
+from ui.cli import CrisisCLI
 
 SNAPSHOT = os.path.join(ROOT, "samples", "weather", "toronto-downtown_2025-02-16.json")
 DOUBLE = {"conditions": {"weather_factors": {"clear": 1.0, "double": 2.0}}}
@@ -75,14 +77,22 @@ class ConditionInputTests(unittest.TestCase):
         self.assertEqual((errors, d.condition, d.factor), ([], "heavy_snow", 1.7))
         self.assertIn("unknown", " ".join(self.parse({"type": "weather", "condition": "blizzard"})[1]))
         self.assertIn("factor", " ".join(self.parse({"type": "traffic", "edge": 38})[1]))
+        self.assertIn(">= 1", " ".join(self.parse({"type": "traffic", "edge": 38, "factor": 0.5})[1]))
         self.assertIn("non-empty list", " ".join(self.parse({"type": "traffic", "edges": "38", "factor": 2})[1]))
         d, errors = self.parse({"type": "congestion", "a": 20, "b": 21, "factor": "2.5"})
         self.assertEqual((errors, d.edges, d.factor), ([], [38], 2.5))
 
     def test_bad_condition_config_is_refused(self):
         for bad in ({"conditions": {"weather_factors": {"snow": 0}}},
+                    {"conditions": {"weather_factors": {"snow": float("inf")}}},
+                    {"conditions": {"weather_factors": {"snow": float("nan")}}},
+                    {"conditions": None},
+                    {"conditions": {"rush_hours": "08:00-09:00"}},
                     {"conditions": {"rush_hours": [{"start": "09:00", "end": "08:00", "factor": 1.2}]}},
-                    {"conditions": {"rush_hours": [{"start": "07:00", "factor": 1.2}]}}):
+                    {"conditions": {"rush_hours": [{"start": "07:00", "end": "08:00", "factor": float("inf")}]}},
+                    {"conditions": {"rush_hours": [{"start": "07:00", "factor": 1.2}]}},
+                    {"scoring": {"weights": None}},
+                    {"scoring": {"weights": {"severity": -5, "people": 10}}}):
             with self.assertRaises(ConfigError):
                 apply_overrides(bad)
 
@@ -133,6 +143,57 @@ class SystemConditionTests(unittest.TestCase):
         s.apply_disruption({"type": "weather", "condition": "double"})
         self.assertEqual(trip.pickup_time, 485)
         self.assertAlmostEqual(trip.delivery_time, 485 + 2 * s.graph.edges[42].w + 5, places=6)
+
+    def test_retime_is_exact_across_multiple_speed_changes(self):
+        g = Graph()
+        g.add_node(Node("A", "A"))
+        g.add_node(Node("B", "B"))
+        g.add_edge(Edge("ab", "A", "B", km=10, w=10))
+        trip = Trip("T1", "E1", "V1", "hub", "H1", "A", "B", 10, 0, assigned_at=0.0)
+        trip.apply_plan(g, 0.0, None, find_route(g, "A", "B"), load_minutes=0, unload_minutes=0)
+        self.assertAlmostEqual(trip.times[1], 10.0)
+
+        g.set_edge_slowdown("ab", 10.0)  # 50% left at t=5 -> 5 + 0.5 * 100 = 55
+        trip.retime(g, 5.0, load_minutes=0, unload_minutes=0)
+        self.assertAlmostEqual(trip.times[1], 55.0)
+
+        g.set_edge_slowdown("ab", 1.0)   # 1% driven during [5, 6] -> 49% left -> 6 + 4.9 = 10.9
+        trip.retime(g, 6.0, load_minutes=0, unload_minutes=0)
+        self.assertAlmostEqual(trip.times[1], 10.9)
+
+        g.set_edge_slowdown("ab", 2.0)   # 20% driven during [6, 8] -> 29% left -> 8 + 0.29 * 20 = 13.8
+        trip.retime(g, 8.0, load_minutes=0, unload_minutes=0)
+        self.assertAlmostEqual(trip.times[1], 13.8)
+
+    def test_rush_hour_syncs_before_scoring_and_cli_startup(self):
+        rush_cfg = {"conditions": {"rush_hours": [{"start": "08:00", "end": "09:00", "factor": 2.0}]}}
+        s = make_system(overrides=rush_cfg)
+        sim = Simulator(s)
+        sim.schedule_emergency(request(location="P5", submitted_at="08:00", deadline="08:40"))
+        cli = CrisisCLI(s, sim, live=False)
+        self.assertEqual(cli.system.conditions()["rush_factor"], 2.0)
+
+        # Fresh run: initial crisis-created score at 08:00 already sees the 2.0x rush-hour travel time.
+        s_plain = make_system()
+        sim_plain = Simulator(s_plain)
+        sim_plain.schedule_emergency(request(location="P5", submitted_at="08:00", deadline="08:40"))
+        plain_scores = []
+        s_plain.bus.subscribe("state-changed", lambda ev: (
+            plain_scores.append(s_plain.emergencies["E1"].base_score)
+            if ev.payload["to"] == S.PRIORITIZED.value else None))
+        sim_plain.step_to(480)
+
+        s2 = make_system(overrides=rush_cfg)
+        sim2 = Simulator(s2)
+        sim2.schedule_emergency(request(location="P5", submitted_at="08:00", deadline="08:40"))
+        rush_factors_at_score = []
+        rush_scores = []
+        s2.bus.subscribe("state-changed", lambda ev: (
+            (rush_factors_at_score.append(s2.rush_factor), rush_scores.append(s2.emergencies["E1"].base_score))
+            if ev.payload["to"] == S.PRIORITIZED.value else None))
+        sim2.step_to(480)
+        self.assertEqual(rush_factors_at_score[0], 2.0)
+        self.assertNotEqual(rush_scores[0], plain_scores[0])
 
 
 class WeatherSnapshotTests(unittest.TestCase):
@@ -204,6 +265,46 @@ class WeatherSnapshotTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Weather 2025-02-16", out.getvalue())
         self.assertIn("Scenario report at 10:", out.getvalue())  # later weather does not keep it running
+
+    def test_city_point_and_save_snapshot_guard_bad_coords_and_io_errors(self):
+        bad_raw = {"center": [None, None], "nodes": [{"id": 1, "lat": 999, "lng": 0}], "edges": []}
+        s = make_system(raw=bad_raw)
+        self.assertTrue(any("center" in w for w in s.dataset.warnings))
+        self.assertTrue(any("out-of-range" in w for w in s.dataset.warnings))
+        with self.assertRaises(WeatherError):
+            city_point(s.dataset)
+
+        fallback_raw = {"center": ["bad", 0], "nodes": [{"id": 1, "lat": 44.0, "lng": -79.0}], "edges": []}
+        s_ok = make_system(raw=fallback_raw)
+        self.assertEqual(city_point(s_ok.dataset), (44.0, -79.0))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = os.path.join(tmp, "not_a_dir")
+            with open(blocker, "w", encoding="utf-8") as handle:
+                handle.write("file")
+            with self.assertRaises(WeatherError):
+                save_snapshot({"hours": []}, os.path.join(blocker, "snap.json"))
+
+    def test_main_weather_handles_midnight_and_undated_emergencies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            midnight = os.path.join(tmp, "midnight.json")
+            with open(midnight, "w", encoding="utf-8") as handle:
+                json.dump([request(submitted_at="00:00", deadline="02:00")], handle)
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = main.main(["--emergencies", midnight, "--weather", SNAPSHOT, "--run", "--quiet"])
+            self.assertEqual(code, 0)
+            self.assertIn("00:00", out.getvalue().splitlines()[1])  # Weather line starts at 00:00
+
+            undated = os.path.join(tmp, "undated.json")
+            with open(undated, "w", encoding="utf-8") as handle:
+                json.dump([request(submitted_at=None, deadline="09:30")], handle)
+            out2 = io.StringIO()
+            with redirect_stdout(out2), redirect_stderr(io.StringIO()):
+                code2 = main.main(["--emergencies", undated, "--weather", SNAPSHOT, "--run", "--quiet"])
+            self.assertEqual(code2, 0)
+            self.assertIn("08:00", out2.getvalue())
+            self.assertIn("1 on time", out2.getvalue())
 
 
 class CityTimelineTests(unittest.TestCase):

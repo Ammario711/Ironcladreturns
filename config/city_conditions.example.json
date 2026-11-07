@@ -1,5 +1,5 @@
 {
-  "_note": "AI-GENERATED DRAFT - team to review and modify. Example --config: typical weekday rush hours. These factors are TEAM ASSUMPTIONS (not measured traffic data); tune them for the city you run. Use: python3 main.py --demo --config config/city_conditions.example.json --run",
+  "_note": "Example --config: typical weekday rush hours. These factors are TEAM ASSUMPTIONS (not measured traffic data); tune them for the city you run. Use: python3 main.py --demo --config config/city_conditions.example.json --run",
   "conditions": {
     "rush_hours": [
       {"start": "07:00", "end": "09:30", "factor": 1.3},

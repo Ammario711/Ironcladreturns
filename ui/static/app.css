@@ -1,7 +1,4 @@
-/* AI-GENERATED DRAFT - team to review and modify.
-   Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
-
-   Styling for the dashboard. No external fonts or libraries (the demo must
+/* Styling for the dashboard. No external fonts or libraries (the demo must
    work offline). All colours are variables ("tokens") at the top, defined
    once for light mode and once for dark mode, so the look is consistent and
    easy to change. Sections: tokens, base, top bar, controls, layout, cards,

@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """Dynamic max-priority queue for emergencies, built on heapq.
 
 heapq is a MIN-heap, so we store the priority negated. Each heap entry is

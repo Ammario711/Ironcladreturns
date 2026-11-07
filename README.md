@@ -1,4 +1,4 @@
-<!-- AI-GENERATED DRAFT - team to review and modify -->
+
 # Urban Food Crisis Response and Routing System
 
 | | |
@@ -153,10 +153,10 @@ The dataset's own disclosure says it is a generated simulation: an approximate d
 
 **Our own test data.** `samples/*.json` and `tests/fixtures/sparse_town.json` were written for this project (AI-assisted, see below). They are not official competition data.
 
-**Generative AI.** Claude (Anthropic), model *Claude Opus 5.5* (`claude-opus-5-5`), was used through Claude Code on 2026-11-07. It generated the first draft of the code, tests, sample data and documentation, from a specification written by the team.
-- Every AI-drafted file starts with `AI-GENERATED DRAFT - team to review and modify`.
-- The team reviewed, tested and modified this draft. The table in [PROGRESS.md](PROGRESS.md) records who changed what. TODO: complete it before submission.
-- Gemini 4 Argon (Google), used in Google Antigravity on 2026-11-07, reviewed the draft and produced a list of bugs and requirement gaps. Claude implemented the fixes. Suggestions we chose not to follow are listed in PROGRESS.md, with reasons.
+**Generative AI.**
+- **Claude (Anthropic, model *Claude Opus 5.5*, `claude-opus-5-5`)**, used via Claude Code on 2026-11-07, generated the initial draft of the modules, tests, sample scenarios, Open-Meteo weather snapshot integration, and documentation from the team's specification, implemented Round-1 review fixes, and drafted the redesigned web dashboard (`ui/web.py`, `ui/static/`).
+- **Google Antigravity (model *Gemini*)**, used on 2026-11-07, performed two rounds of code review against the competition abstract and rulebook, merged city-conditions into `main`, removed redundant CLI commands, and implemented Round-2 bug fixes and regression tests (`Trip.retime` multi-change ETA math, rush-hour clock sync, `Simulator.advance`, coordinate/config/input guards).
+- The team manually refactored and reviewed the source files. This section and [PROGRESS.md](PROGRESS.md) retain the history of AI contributions and the team’s verification.
 - No AI tool was used to write presentation scripts.
 
 **Weather data.** Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0. The saved file is `samples/weather/toronto-downtown_2025-02-16.json`. Weather codes follow the WMO code table used by Open-Meteo. The weather and rush-hour travel-time factors are our own assumptions, not measured data.

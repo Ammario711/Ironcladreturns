@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """Default configuration + optional JSON override file.
 
 Every tunable number lives here (not in /core) so the team can change
@@ -10,6 +8,7 @@ top of DEFAULT_CONFIG.
 
 import copy
 import json
+import math
 
 from core.utils import parse_time
 
@@ -146,12 +145,20 @@ NON_NEGATIVE_SETTINGS = [
 
 
 def validate_config(config):
-    """Raise ConfigError if a number is missing, not a number, or out of range."""
-    def number_at(section, key):
-        value = config.get(section, {}).get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:  # value != value: NaN
-            raise ConfigError(f"config {section}.{key} must be a number (got {value!r})")
+    """Raise ConfigError if a setting is missing, the wrong type, or out of range."""
+    if not isinstance(config, dict):
+        raise ConfigError("config must be a JSON object")
+    for section in DEFAULT_CONFIG:
+        if not isinstance(config.get(section), dict):
+            raise ConfigError(f"config {section} must be an object (got {config.get(section)!r})")
+
+    def finite_number(value, label):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ConfigError(f"config {label} must be a finite number (got {value!r})")
         return value
+
+    def number_at(section, key):
+        return finite_number(config[section].get(key), f"{section}.{key}")
 
     for section, key in POSITIVE_SETTINGS:
         if number_at(section, key) <= 0:
@@ -159,21 +166,44 @@ def validate_config(config):
     for section, key in NON_NEGATIVE_SETTINGS:
         if number_at(section, key) < 0:
             raise ConfigError(f"config {section}.{key} cannot be negative (got {config[section][key]})")
-    for name, factor in config["routing"]["terrain_multipliers"].items():
-        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor <= 0:
-            raise ConfigError(f"config routing.terrain_multipliers.{name} must be a number > 0 (got {factor!r})")
-    if not config["scoring"]["weights"] or sum(config["scoring"]["weights"].values()) <= 0:
+    terrain = config["routing"].get("terrain_multipliers")
+    if not isinstance(terrain, dict):
+        raise ConfigError("config routing.terrain_multipliers must be an object")
+    for name, factor in terrain.items():
+        if finite_number(factor, f"routing.terrain_multipliers.{name}") <= 0:
+            raise ConfigError(f"config routing.terrain_multipliers.{name} must be > 0 (got {factor!r})")
+    weights = config["scoring"].get("weights")
+    if not isinstance(weights, dict) or not weights:
+        raise ConfigError("config scoring.weights must be a non-empty object")
+    for name, weight in weights.items():
+        if finite_number(weight, f"scoring.weights.{name}") < 0:
+            raise ConfigError(f"config scoring.weights.{name} cannot be negative (got {weight!r})")
+    if sum(weights.values()) <= 0:
         raise ConfigError("config scoring.weights must contain at least one positive weight")
-    for name, factor in config["conditions"]["weather_factors"].items():
-        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor <= 0:
-            raise ConfigError(f"config conditions.weather_factors.{name} must be a number > 0 (got {factor!r})")
-    for i, rush in enumerate(config["conditions"]["rush_hours"]):
+    cat_weights = config["scoring"].get("category_weights")
+    if not isinstance(cat_weights, dict) or not cat_weights:
+        raise ConfigError("config scoring.category_weights must be a non-empty object")
+    for name, weight in cat_weights.items():
+        if finite_number(weight, f"scoring.category_weights.{name}") < 0:
+            raise ConfigError(f"config scoring.category_weights.{name} cannot be negative (got {weight!r})")
+    weather_factors = config["conditions"].get("weather_factors")
+    if not isinstance(weather_factors, dict) or not weather_factors:
+        raise ConfigError("config conditions.weather_factors must be a non-empty object")
+    for name, factor in weather_factors.items():
+        if finite_number(factor, f"conditions.weather_factors.{name}") <= 0:
+            raise ConfigError(f"config conditions.weather_factors.{name} must be > 0 (got {factor!r})")
+    rush_hours = config["conditions"].get("rush_hours")
+    if not isinstance(rush_hours, list):
+        raise ConfigError("config conditions.rush_hours must be a list")
+    for i, rush in enumerate(rush_hours):
+        if not isinstance(rush, dict):
+            raise ConfigError(f"config conditions.rush_hours[{i}] must be an object")
         try:
             start, end = parse_time(rush["start"]), parse_time(rush["end"])
-            factor = rush["factor"]
+            factor = finite_number(rush["factor"], f"conditions.rush_hours[{i}].factor")
         except (KeyError, TypeError, ValueError) as exc:
             raise ConfigError(f"config conditions.rush_hours[{i}] needs start, end (HH:MM) and factor ({exc})") from None
-        if start >= end or isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor <= 0:
+        if start >= end or factor <= 0:
             raise ConfigError(f"config conditions.rush_hours[{i}]: start must be before end and factor > 0")
 
 
@@ -181,6 +211,8 @@ def apply_overrides(override):
     """Defaults + override, validated. The override is also kept in
     config["_overrides"] so values the team set explicitly (e.g. terrain
     factors) can win over values read from the dataset."""
+    if not isinstance(override, dict):
+        raise ConfigError(f"config override must be a JSON object (got {type(override).__name__})")
     config = deep_merge(DEFAULT_CONFIG, override)
     config["_overrides"] = copy.deepcopy(override)
     validate_config(config)

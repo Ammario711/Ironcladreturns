@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """Live web dashboard, standard library only (http.server).
 
 Run:  python3 main.py --demo --web      then open http://localhost:8765

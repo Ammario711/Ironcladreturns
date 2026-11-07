@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """CLI `add` form: unknown locations are re-asked with suggestions.
 
 input() is replaced by a list of scripted answers (unittest.mock), and the
@@ -61,6 +59,41 @@ class AddFormLocationTests(unittest.TestCase):
         (e,) = system.emergencies.values()
         self.assertEqual(e.node, 34)          # P3's node
         self.assertEqual(e.category, "hospital")
+
+    def test_comma_in_place_query_suggests_or_resolves_comma_named_poi(self):
+        value, printed = ask_location(["Yonge, King", "y"])
+        self.assertIsInstance(value, int)     # suggested intersection node id, not bad lat/lng
+        self.assertIn("Did you mean", printed)
+        system = make_system()
+        system.pois["P3"].name = "General Hospital, Wing B"
+        cli = CrisisCLI(system, Simulator(system), live=False)
+        with mock.patch("builtins.input", side_effect=["General Hospital, Wing B"]), redirect_stdout(io.StringIO()):
+            chosen = cli._ask_location()
+        self.assertEqual(chosen, "General Hospital, Wing B")
+
+    def test_only_quit_is_a_command_and_closed_stdin_exits_cleanly(self):
+        system = make_system()
+        cli = CrisisCLI(system, Simulator(system), live=False)
+        help_out = io.StringIO()
+        cli.stdout = help_out
+        cli.onecmd("help")
+        cli.stdout = io.StringIO()
+        help_text = help_out.getvalue()
+        self.assertIn("quit", help_text)
+        self.assertNotIn("EOF", help_text.split())
+        self.assertNotIn("exit", help_text.split())
+
+        exit_out = io.StringIO()
+        with redirect_stdout(exit_out):
+            stop = cli.onecmd("exit")
+        self.assertFalse(stop)
+        self.assertIn("Unknown command: 'exit'", exit_out.getvalue())
+        self.assertTrue(cli.onecmd("quit"))
+
+        eof_out = io.StringIO()
+        with mock.patch("builtins.input", side_effect=[EOFError()]), redirect_stdout(eof_out):
+            cli.cmdloop()
+        self.assertNotIn("Unknown command", eof_out.getvalue())
 
 
 if __name__ == "__main__":

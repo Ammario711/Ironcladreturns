@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """Emergency request model and input validation.
 
 validate_emergency() never raises on bad user input. It returns ALL the
@@ -237,7 +235,7 @@ def validate_emergency(raw, graph, pois, config, existing_ids=(), auto_id="E?", 
     categories = config["scoring"]["category_weights"]
 
     # --- id (text or a whole number; ids elsewhere in the data may be numbers) ---
-    raw_id = _get(raw, "id")
+    raw_id = next((raw[k] for k in FIELD_ALIASES["id"] if k in raw and raw[k] is not None), None)
     emergency_id = None
     if raw_id is None:
         emergency_id = auto_id

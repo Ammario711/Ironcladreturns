@@ -1,5 +1,3 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
 """Interactive command-line dashboard (Python's built-in `cmd` module).
 
 Type `help` inside the program for the command list; every command's help
@@ -13,7 +11,7 @@ import shlex
 
 from core.emergency import resolve_location, suggest_locations, validate_emergency
 from core.routing import alternative_routes
-from core.utils import fmt_time, id_sort_key, normalize_id, parse_time
+from core.utils import fmt_time, id_sort_key, normalize_id, parse_time, to_number
 from loader.input_loader import InputFileError, load_disruptions_file, load_emergencies_file
 
 
@@ -59,8 +57,14 @@ def location_from_text(text):
     "43.65, -79.38" -> {"lat": ..., "lng": ...};  "33" -> 33;  "P3" -> "P3"
     """
     if "," in text:
-        lat, lng = text.split(",", 1)
-        return {"lat": lat.strip(), "lng": lng.strip()}
+        parts = text.split(",")
+        if len(parts) == 2:
+            try:
+                to_number(parts[0])
+                to_number(parts[1])
+                return {"lat": parts[0].strip(), "lng": parts[1].strip()}
+            except ValueError:
+                pass
     try:
         return normalize_id(text)
     except ValueError:
@@ -90,10 +94,10 @@ class CrisisCLI(cmd.Cmd):
         self.system = system
         self.sim = simulator
         self.live = live
-        system.bus.subscribe("*", self._print_live)
         # Show the scenario's start time from the beginning (not 00:00).
         if not simulator.started:
             system.set_clock(simulator.start_time())
+        system.bus.subscribe("*", self._print_live)
         self.intro = (f"\nUrban Food Crisis Response - {system.dataset.name}\n"
                       f"Clock {fmt_time(self.sim.start_time())}. {len(self.sim.pending())} scheduled inputs. "
                       f"Type 'help' for commands, 'tick 10' to advance 10 minutes, 'run' to finish.\n")
@@ -106,6 +110,9 @@ class CrisisCLI(cmd.Cmd):
         pass  # pressing Enter does nothing (default would repeat the last command)
 
     def default(self, line):
+        if line == "EOF":  # Ctrl-D / closed stdin ends cmdloop without adding an 'EOF' command
+            print()
+            return True
         print(f"Unknown command: {line!r}. Type 'help'.")
 
     # ------------------------------------------------------------ views
@@ -459,6 +466,3 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
     def do_quit(self, _arg):
         """quit : leave the program"""
         return True
-
-    do_exit = do_quit
-    do_EOF = do_quit
