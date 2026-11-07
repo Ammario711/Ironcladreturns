@@ -14,6 +14,7 @@ The dataset path is only an argument: Dataset 2 needs no code change.
 """
 
 import argparse
+import copy
 import os
 import re
 import sys
@@ -106,10 +107,6 @@ def main(argv=None):
     for warning in dataset.warnings:
         print(f"  warning: {warning}")
 
-    # raise_handler_errors=False: in live use one failing subscriber must not stop the system
-    system = CrisisResponseSystem(dataset, config, bus=EventBus(raise_handler_errors=False))
-    sim = Simulator(system)
-
     # Inputs: embedded in the dataset (if any) + files + generated.
     emergency_files = list(args.emergencies) + ([SAMPLE_EMERGENCIES] if args.demo else [])
     disruption_files = list(args.disruptions) + ([SAMPLE_DISRUPTIONS] if args.demo else [])
@@ -130,23 +127,35 @@ def main(argv=None):
         disruptions += gen_d
         print(f"Generated {len(gen_e)} emergencies and {len(gen_d)} disruption events (seed {args.seed})")
     if args.weather or args.fetch_weather:
-        start = earliest_time(emergencies, ("submitted_at", "submission_time", "submitted", "time"))
-        dis_start = earliest_time(disruptions, ("time", "at"))
-        start = min(t for t in (start, dis_start) if t is not None) if (start or dis_start) else None
+        times = [t for t in (earliest_time(emergencies, ("submitted_at", "submission_time", "submitted", "time")),
+                             earliest_time(disruptions, ("time", "at"))) if t is not None]
+        start = min(times) if times else None
         try:
             disruptions += weather_events(args, dataset, start)
         except WeatherError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
-    for raw in emergencies:
-        sim.schedule_emergency(raw)
-    for raw in disruptions:
-        sim.schedule_disruption(raw)
+
+    def make_world():
+        """A fresh system + simulator with every input scheduled. Called once
+        now, and again by the dashboard's Reset button (the dataset is reloaded
+        because a run changes hub stock and vehicle positions)."""
+        # raise_handler_errors=False: in live use one failing subscriber must not stop the system
+        fresh = CrisisResponseSystem(load_dataset(args.dataset, config), config,
+                                     bus=EventBus(raise_handler_errors=False))
+        simulator = Simulator(fresh)
+        for raw in copy.deepcopy(emergencies):
+            simulator.schedule_emergency(raw)
+        for raw in copy.deepcopy(disruptions):
+            simulator.schedule_disruption(raw)
+        return fresh, simulator
+
+    system, sim = make_world()
     print(f"Scheduled {len(emergencies)} emergencies and {len(disruptions)} disruptions")
 
     if args.web:
         try:
-            Dashboard(system, sim).serve(port=args.port)
+            Dashboard(system, sim, make_world=make_world).serve(port=args.port)
         except OSError as exc:  # e.g. the port is already in use
             print(f"ERROR: cannot start the dashboard on port {args.port}: {exc}", file=sys.stderr)
             return 2

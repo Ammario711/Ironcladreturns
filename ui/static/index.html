@@ -1,0 +1,184 @@
+<!doctype html>
+<!-- AI-GENERATED DRAFT - team to review and modify.
+     Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+     Page skeleton only: app.js fills in all the data, app.css does all the styling. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Food Crisis Command</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M9 22V13l7-4 7 4v9' fill='none' stroke='white' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10l8-5 8 5v10"/><path d="M9 20v-5h6v5"/></svg>
+    </div>
+    <div>
+      <div class="brand-title">Food Crisis Command</div>
+      <div class="brand-sub" id="dataset">Loading city...</div>
+    </div>
+  </div>
+
+  <div class="clock-block">
+    <div class="clock" id="clock">--:--</div>
+    <div class="clock-sub" id="clock-sub">Simulation clock</div>
+  </div>
+
+  <div class="top-right">
+    <div class="pill" id="conditions-pill" data-tip="Weather and rush hour slow every road by this factor"></div>
+    <div class="live" id="live" role="status"><span class="dot"></span><span class="live-text">Connecting</span></div>
+    <button class="icon-btn" id="theme-btn" aria-label="Switch light or dark mode" data-tip="Light / dark mode"></button>
+  </div>
+</header>
+
+<nav class="controls" aria-label="Simulation controls">
+  <div class="control-group">
+    <button class="btn btn-primary" id="play-btn" data-tip="Play or pause (Space)"></button>
+    <div class="segmented" id="speed" role="radiogroup" aria-label="Playback speed">
+      <button type="button" data-speed="1" role="radio" data-tip="1 simulated minute per second">1&times;</button>
+      <button type="button" data-speed="5" role="radio" data-tip="5 simulated minutes per second">5&times;</button>
+      <button type="button" data-speed="15" role="radio" data-tip="15 simulated minutes per second">15&times;</button>
+    </div>
+    <button class="btn" id="step-1" data-tip="Advance 1 minute (.)">+1 min</button>
+    <button class="btn" id="step-10" data-tip="Advance 10 minutes">+10 min</button>
+    <button class="btn" id="run-btn" data-tip="Run the whole scenario to the end"></button>
+    <button class="btn btn-ghost" id="reset-btn" data-tip="Start the scenario again"></button>
+  </div>
+  <div class="control-group">
+    <label class="select-wrap" data-tip="Change the weather: every road gets slower">
+      <span id="weather-icon" aria-hidden="true"></span>
+      <select id="weather-select" aria-label="Weather"></select>
+    </label>
+    <button class="btn btn-accent" id="add-btn" data-tip="Submit a new emergency request (N)"></button>
+  </div>
+</nav>
+
+<main class="layout">
+  <section class="kpis" id="kpis" aria-label="Key figures"></section>
+
+  <section class="card map-card" aria-label="City map">
+    <div class="card-head">
+      <h2>City map</h2>
+      <div class="map-tools">
+        <button class="chip-toggle on" id="toggle-routes" aria-pressed="true">Routes</button>
+        <button class="chip-toggle on" id="toggle-labels" aria-pressed="true">Labels</button>
+        <span class="tool-sep"></span>
+        <button class="icon-btn small" id="zoom-in" aria-label="Zoom in" data-tip="Zoom in (+)"></button>
+        <button class="icon-btn small" id="zoom-out" aria-label="Zoom out" data-tip="Zoom out (-)"></button>
+        <button class="icon-btn small" id="zoom-fit" aria-label="Fit map" data-tip="Fit the whole city"></button>
+      </div>
+    </div>
+    <div class="map-wrap" id="map-wrap">
+      <svg id="map" viewBox="0 0 1000 640" role="img" aria-label="Road network with hubs, emergencies and vehicles">
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0H0V40" fill="none" class="grid-line"/>
+          </pattern>
+        </defs>
+        <rect class="map-bg" x="-5000" y="-5000" width="11000" height="11000" fill="url(#grid)"/>
+        <g id="layer-roads"></g>
+        <g id="layer-routes"></g>
+        <g id="layer-nodes"></g>
+        <g id="layer-places"></g>
+        <g id="layer-hubs"></g>
+        <g id="layer-sites"></g>
+        <g id="layer-vehicles"></g>
+      </svg>
+      <div class="weather-fx" id="weather-fx" aria-hidden="true"></div>
+      <div class="legend" id="legend"></div>
+      <div class="map-hint">Scroll to zoom &middot; drag to pan &middot; click anything for details</div>
+    </div>
+  </section>
+
+  <section class="card side-card" aria-label="Lists">
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="queue">Queue</button>
+      <button role="tab" data-tab="emergencies">Emergencies</button>
+      <button role="tab" data-tab="fleet">Fleet</button>
+      <button role="tab" data-tab="hubs">Hubs</button>
+    </div>
+    <div class="tab-body" id="tab-body" role="tabpanel"></div>
+  </section>
+
+  <section class="card feed-card" aria-label="Live activity">
+    <div class="card-head">
+      <h2>Live activity</h2>
+      <div class="chips" id="feed-filters"></div>
+    </div>
+    <ol class="feed" id="feed"></ol>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title">
+  <div class="drawer-head">
+    <div id="drawer-title"></div>
+    <button class="icon-btn" id="drawer-close" aria-label="Close details"></button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<div class="modal-backdrop" id="modal" hidden>
+  <form class="modal" id="add-form" role="dialog" aria-modal="true" aria-labelledby="add-title" novalidate>
+    <div class="modal-head">
+      <div>
+        <h2 id="add-title">New emergency request</h2>
+        <p class="muted">Checked by exactly the same validation as input files and the CLI.</p>
+      </div>
+      <button type="button" class="icon-btn" id="add-close" aria-label="Close"></button>
+    </div>
+    <div class="form-grid">
+      <label class="field span-2">
+        <span>Location</span>
+        <input name="location" list="places-list" autocomplete="off" required
+               placeholder="Place id (P3), place name, node id or lat,lng">
+        <datalist id="places-list"></datalist>
+        <small>Unknown names get a "did you mean" suggestion.</small>
+      </label>
+      <label class="field">
+        <span>Crisis type</span>
+        <select name="crisis_type" id="crisis-type"></select>
+      </label>
+      <label class="field">
+        <span>Location type</span>
+        <select name="location_category" id="category"></select>
+      </label>
+      <label class="field">
+        <span>People affected</span>
+        <input type="number" name="people_affected" min="1" value="100" required>
+      </label>
+      <div class="field">
+        <span>Severity</span>
+        <div class="segmented severity" id="severity-picker" role="radiogroup" aria-label="Severity"></div>
+      </div>
+      <label class="field">
+        <span>Normal food (units)</span>
+        <input type="number" name="food_normal" min="0" value="40">
+      </label>
+      <label class="field">
+        <span>Cold food (units)</span>
+        <input type="number" name="food_cold" min="0" value="0">
+        <small>Travels only in refrigerated trucks.</small>
+      </label>
+      <label class="field">
+        <span>Deliver by</span>
+        <input type="time" name="deadline" required>
+      </label>
+    </div>
+    <div class="form-messages" id="form-messages" aria-live="polite"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="add-cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="add-submit">Submit request</button>
+    </div>
+  </form>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

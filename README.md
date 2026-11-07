@@ -46,7 +46,7 @@ python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 124 automated tests, a few seconds (no internet needed)
+python3 -m unittest discover -s tests -v   # 129 automated tests, a few seconds (no internet needed)
 ```
 
 ### Dataset 2 (zero code changes)
@@ -58,6 +58,16 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 - `--generate N --seed S` builds requests and disruptions from whatever places, roads and vehicles that dataset contains.
 - If Dataset 2 embeds `emergencies` or `disruptions` lists, they are loaded automatically.
 - To change speed factors, units or fuel for Dataset 2, copy [config/config.example.json](config/config.example.json), edit it, and pass `--config my.json`. The algorithm code does not change.
+
+### Live web dashboard
+Run `python3 main.py --demo --web` and open http://localhost:8765. It works with any dataset, needs no internet, and uses only the standard library on the server and plain HTML/CSS/JavaScript in the browser (`ui/static/`).
+- **Controls:** Play/Pause at 1x, 5x or 15x speed (Space), step +1 or +10 minutes, run to the end, and Reset to start the same scenario again.
+- **Map:** zoom with the scroll wheel and drag to pan. It shows trucks moving along their remaining routes, request pins coloured by state (pulsing when Delayed, Re-Routing or Failed), hubs with live stock, closed roads in red, jams in orange, and a weather effect.
+- **Details panel:** click any request, truck, hub, road or place.
+  - A request shows the full timestamped timeline, the lifecycle stepper, *why it has this priority* (all six score factors plus waiting time), and its vehicles.
+  - Trucks, hubs and roads have action buttons: breakdown/repair, restock, close/reopen, traffic jam.
+- **New emergency form (N):** checked by the same validation as files and the CLI. Errors appear next to the form, including "did you mean" for unknown places.
+- **Also:** KPI cards, a priority queue, fleet and hub lists, a filterable live activity feed, pop-up alerts, a light/dark theme and a phone layout.
 
 ### Weather, rush hour and traffic
 - **Real weather (Open-Meteo, free, no API key):** `python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run` replays a real snowy Toronto morning that is saved in the repo, so it works offline and gives the same result every time.
@@ -126,7 +136,8 @@ core/              algorithms, no dataset-specific code:
                    event_bus, disruptions, dispatcher, system (facade)
 loader/            dataset / config / input-file loading
 sim/               simulator + seeded scenario generator
-ui/                command-line dashboard (cli.py) + live web dashboard (web.py)
+ui/                command-line dashboard (cli.py) + web dashboard server (web.py)
+                   + ui/static/: the dashboard page (index.html, app.css, app.js)
 tests/             unittest suite + Dataset-2-style fixture
 DECISIONS.md       algorithms, data structures, complexity, trade-offs
 PROGRESS.md        build status, file map, known issues, next steps

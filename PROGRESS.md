@@ -1,13 +1,13 @@
 <!-- AI-GENERATED DRAFT - team to review and modify -->
 # PROGRESS: Ironcladreturns, Urban Food Crisis Response and Routing System
 
-**Last updated:** 2026-11-07. All 9 draft steps are DONE, plus location suggestions and the fixes from the Gemini review, including a live web dashboard (merged to `main` in PR #1). Now on branch `feature/city-conditions`: a fuller city timeline plus weather / rush hour / traffic. 124 tests pass. The demo runs.
+**Last updated:** 2026-11-07. All 9 draft steps are DONE, plus location suggestions and the fixes from the Gemini review, including a live web dashboard (merged to `main` in PR #1). City timeline + weather/rush hour/traffic are in PR #2 (`feature/city-conditions`). Now on branch `feature/dashboard-redesign` (stacked on it): the redesigned web dashboard. 129 tests pass. The demo runs.
 **Status:** complete first draft (AI-generated). **Next:** team review, rewriting, and citations (see "Next steps").
 
 ## Resume here (teammate or another AI)
 1. Read this file, then [README.md](README.md) (how to run) and [DECISIONS.md](DECISIONS.md) (why it works this way).
 2. Python 3.10+, standard library only, nothing to install. Run every command from the project root.
-3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 124 tests OK.
+3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 129 tests OK.
 4. Demo: `python3 main.py --demo --run` (or `--quiet` for the report only, drop `--run` for the interactive CLI, or use `--web` for the browser dashboard at http://localhost:8765).
 5. Before submitting: `python3 make_zip.py` creates `Ironcladreturns_Programming_Code.zip`.
 
@@ -38,6 +38,7 @@ In progress: nothing.
 | Live web dashboard (+5 rubric points) | `ui/web.py`, `main.py --web` | stdlib `http.server` + Server-Sent Events; map, queue, emergencies, live events, tick/run buttons, click a road to close/reopen |
 | Fuller city timeline in the sample: every closure reopens, a 2nd breakdown (V7, cargo rescued) + repair, food-bank restocks (normal food only, so E8 still shows the cold shortage), a traffic collision that clears | `samples/disruptions.json` | City ends the morning back to normal (tested) |
 | Weather / rush hour / traffic incidents change road costs; ETAs of moving vehicles are recomputed; new trips route around jams | `core/graph.py`, `core/system.py`, `core/trips.py` (`retime`), `core/dispatcher.py`, `core/disruptions.py` | New `weather` / `traffic` disruptions, `conditions-changed` event, CLI `weather` / `traffic` commands, dashboard shows conditions |
+| Dashboard redesign: play/pause with speed, KPI cards, zoomable map with moving trucks and weather effects, click-anything details panel with actions, new-emergency form, filterable feed, pop-up alerts, reset, light/dark, phone layout | `ui/web.py` (server), `ui/static/index.html`, `app.css`, `app.js`, `main.py` (`make_world`) | Page moved out of the Python string into plain files; checked in the browser at desktop, phone, light and dark |
 | Real weather from Open-Meteo (free, no key), downloaded once and replayed | `loader/weather_loader.py`, `main.py --fetch-weather / --weather`, `samples/weather/` | Real snowy Toronto morning (2025-02-16) saved; tests use a fake network |
 
 **Parts of the weather/traffic idea we changed (and why):**
@@ -101,7 +102,10 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `sim/simulator.py` | Fixed-step timeline runner + text report |
 | `sim/scenario_generator.py` | Seeded random scenario for ANY dataset (Dataset 2 demo) |
 | `ui/cli.py` | Interactive dashboard (`cmd.Cmd`), table/event formatting |
-| `ui/web.py` | Live web dashboard: `http.server`, `/state` JSON, `/events` Server-Sent Events, inline HTML/SVG/JS page |
+| `ui/web.py` | Dashboard server: `http.server`, `/state` JSON, `/events` Server-Sent Events, POST actions (tick, run, road, disrupt, emergency, reset) |
+| `ui/static/index.html` | Dashboard page skeleton |
+| `ui/static/app.css` | Dashboard styling: colour tokens (light/dark), layout, components, responsive, motion |
+| `ui/static/app.js` | Dashboard logic in 13 numbered sections: state, rendering, map, details panel, feed, form, playback, input |
 | `tests/helpers.py` | `make_system`, `request`, `check_invariants`, `run_until` |
 | `tests/test_loader_routing.py` | Loader robustness + routing |
 | `tests/test_input_scoring_queue.py` | Validation, scoring, queue, aging/starvation |
@@ -109,7 +113,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `tests/test_cli.py` | CLI add form: re-asking unknown locations (scripted input via unittest.mock) |
 | `tests/test_review_fixes.py` | One test (or more) per Gemini review fix |
 | `tests/test_conditions.py` | Weather/rush hour/traffic, ETA retiming, weather snapshot loader (fake network), sample city timeline |
-| `tests/test_web.py` | Starts the real dashboard server on a free port: page, state, tick, road toggle, event stream |
+| `tests/test_web.py` | Starts the real dashboard server on a free port: page files (whitelist), state, every action, reset, event stream |
 | `tests/test_scenarios.py` | End-to-end: closures, breakdowns, unreachable, simultaneous, Dataset-2 fixture, determinism |
 | `tests/fixtures/sparse_town.json` | Dataset-2-style fixture: string ids, terrain list, island node, bad records, extra keys |
 | `make_zip.py` | Builds `Ironcladreturns_Programming_Code.zip` |
@@ -121,7 +125,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 - One trip serves one emergency (no multi-stop tours). No refuelling. Vehicles stay where they delivered.
 - When a request fails, uncollected stranded cargo is written off. A blocked vehicle's hub cargo goes back to that hub's stock even though the vehicle may not physically get there.
 - ISO times: only the time of day is used (a scenario is one day; write later days as `HH:MM+1d`).
-- The web dashboard is for local use (binds to 127.0.0.1, no login).
+- The web dashboard is for local use (binds to 127.0.0.1, no login). The Reset button asks the browser for a confirmation. Browser-side JavaScript has no automated tests (checked by hand in the browser).
 - Weather/rush-hour factors are assumptions; vehicles already driving are not diverted around a new jam (only new trips avoid it).
 - The generic `priority-changed` event fires every ~17 minutes per waiting request (5-point threshold), so the event log is chatty in long scenarios.
 - The CLI `add` form does not let you edit or cancel an emergency after it is accepted.
@@ -148,4 +152,6 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | core/dispatcher.py | | | |
 | core/system.py | | | |
 | ui/web.py | | | |
+| ui/static/app.js | | | |
+| ui/static/app.css | | | |
 | (others) | | | |

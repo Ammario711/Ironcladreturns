@@ -192,6 +192,23 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
   - Live updates use **Server-Sent Events** (`/events`), not WebSocket. The standard library has no WebSocket server, and the page only needs server-to-browser updates. Button clicks are plain POST requests.
   - Each event carries its bus sequence number, so a reconnecting browser resumes exactly where it stopped.
 - **Thread safety:** each browser connection runs in its own thread, but the system is not thread-safe. Every access holds one lock (a `threading.Condition`), and the event streams sleep on that Condition until something changes.
+- **Page files:** the page is three plain files in `ui/static/` (HTML skeleton, CSS with colour tokens for light and dark mode, JavaScript in numbered sections). They contain no frameworks, fonts or CDN links, so the demo works offline and every line can be read. The server only serves those three named files (a whitelist), so no other file on disk can be requested.
+- **How the page stays live.**
+  - `/state` returns one JSON snapshot.
+  - Each event from `/events` adds a feed line and schedules a redraw (at most about six per second).
+  - Trucks are kept as the same SVG elements between redraws, so a CSS transition glides them to their new spot.
+  - The server sends each truck's position as "fraction `f` of the way from node A to node B".
+- **Actions** reuse the same code paths as files and the CLI.
+  - `/emergency` calls `submit_emergency`, the same validation, and dispatches at once.
+  - `/disrupt` calls `apply_disruption`.
+  - `/reset` rebuilds the scenario with `make_world()` from `main.py`.
+
+  The dashboard therefore cannot do anything the tested core cannot.
+- **Usability choices:**
+  - Every number can be explained: the priority breakdown and the timeline in the details panel.
+  - Bursts of events become one pop-up instead of a flood.
+  - Pop-ups only cover important events: new request, delivered, failed, re-routing, breakdown, stock-out, weather.
+  - Keyboard shortcuts, a reduced-motion setting, and colour plus text labels, so colour is never the only signal.
 
 ## 11. City conditions: weather, rush hour, traffic ([core/system.py](core/system.py), [loader/weather_loader.py](loader/weather_loader.py))
 - **One formula.** road cost = `w × terrain × (weather × rush hour) × local slowdown`.
