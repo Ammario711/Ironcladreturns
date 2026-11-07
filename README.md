@@ -46,7 +46,7 @@ python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 142 automated tests, about 10 seconds (no internet needed)
+python3 -m unittest discover -s tests -v   # 155 automated tests, about 10 seconds (no internet needed)
 ```
 
 ### Dataset 2 (zero code changes)
@@ -78,6 +78,10 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 - **Also:** KPI cards, a priority queue, fleet and hub lists, a filterable live activity feed, pop-up alerts, a light/dark theme and a phone layout.
 
 ### Weather, rush hour and traffic
+- **Saved TomTom traffic:** normal startup uses `data/toronto-live-traffic.json` when present, otherwise `data/toronto-downtown.json`. The included snapshot has all 82 road weights updated; it is a saved observation, not continuously refreshed traffic. Explicit `--dataset` always wins.
+- **Refresh separately:** run `python3 traffic_loader.py` and enter your TomTom key at the hidden prompt, or provide it through `TOMTOM_API_KEY`. The standalone loader uses only the standard library, keeps HTTPS certificate verification enabled, and makes no changes to simulation code. Normal simulation startup makes no TomTom calls.
+- **Refresh behavior:** [TomTom traffic-enabled routes](https://docs.tomtom.com/routing-api/documentation/tomtom-maps/v1/calculate-route) use each edge's `a`/`b` node coordinates. Seconds become minutes rounded to four decimals, with 0.5 seconds between requests. Failed edges retain input baseline weights; if no requests succeed, the command exits nonzero without creating or replacing the output. Successful refreshes save atomically.
+- **Custom traffic dataset:** `python3 traffic_loader.py city.json --output city-live-traffic.json`, then `python3 main.py --dataset city-live-traffic.json`. To use the original Toronto baseline explicitly, pass `--dataset data/toronto-downtown.json`.
 - **Real weather (Open-Meteo, free, no API key):** `python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run` replays a real snowy Toronto morning that is saved in the repo, so it works offline and gives the same result every time.
 - **Any city and day:** `python3 main.py --dataset X --fetch-weather 2025-02-16 --run`. This downloads that day's hourly weather for the dataset's centre **once**, saves it to `samples/weather/`, and uses it.
 - **Rush hours:** `--config config/city_conditions.example.json` turns on typical weekday rush hours. The factors are team assumptions; tune them in the file.
