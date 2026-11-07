@@ -1,13 +1,13 @@
 <!-- AI-GENERATED DRAFT - team to review and modify -->
 # PROGRESS: Ironcladreturns, Urban Food Crisis Response and Routing System
 
-**Last updated:** 2026-11-07. All 9 draft steps are DONE. 64 tests pass. The demo runs. The zip is built.
+**Last updated:** 2026-11-07. All 9 draft steps are DONE, plus location suggestions (branch `feature/location-suggestions`). 71 tests pass. The demo runs.
 **Status:** complete first draft (AI-generated). **Next:** team review, rewriting, and citations (see "Next steps").
 
 ## Resume here (teammate or another AI)
 1. Read this file, then [README.md](README.md) (how to run) and [DECISIONS.md](DECISIONS.md) (why it works this way).
 2. Python 3.10+, standard library only, nothing to install. Run every command from the project root.
-3. Sanity check (about 1 second): `python3 -m unittest discover -s tests` should report 64 tests OK.
+3. Sanity check (about 1 second): `python3 -m unittest discover -s tests` should report 71 tests OK.
 4. Demo: `python3 main.py --demo --run` (or `--quiet` for the report only, or drop `--run` for the interactive CLI).
 5. Before submitting: `python3 make_zip.py` creates `Ironcladreturns_Programming_Code.zip`.
 
@@ -25,6 +25,11 @@
 | 9 | README + DECISIONS + zip | DONE | `make_zip.py` rebuilds the zip; presentation NOT drafted (rules forbid AI scripts) |
 
 In progress: nothing.
+
+### Changes after the first draft
+| Change | Where | Notes |
+|---|---|---|
+| Unknown locations get "did you mean" suggestions; the `add` form re-asks until the location is valid | `core/emergency.py` (`suggest_locations`), `ui/cli.py` (`_ask_location`, `_print_places`) | Matches part of a name, words in any order, and typos (difflib). Works on any dataset. Tested in `tests/test_cli.py` |
 
 ## How to run
 ```
@@ -73,6 +78,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `tests/test_loader_routing.py` | Loader robustness + routing |
 | `tests/test_input_scoring_queue.py` | Validation, scoring, queue, aging/starvation |
 | `tests/test_matcher_states_events.py` | Matcher constraints, state table, event bus |
+| `tests/test_cli.py` | CLI add form: re-asking unknown locations (scripted input via unittest.mock) |
 | `tests/test_scenarios.py` | End-to-end: closures, breakdowns, unreachable, simultaneous, Dataset-2 fixture, determinism |
 | `tests/fixtures/sparse_town.json` | Dataset-2-style fixture: string ids, terrain list, island node, bad records, extra keys |
 | `make_zip.py` | Builds `Ironcladreturns_Programming_Code.zip` |

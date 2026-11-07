@@ -45,7 +45,7 @@ python3 main.py --demo --run            # Dataset 1 + sample scenario, prints th
 python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 64 automated tests, under 1 second
+python3 -m unittest discover -s tests -v   # 71 automated tests, under 1 second
 ```
 
 ### Dataset 2 (zero code changes)
@@ -68,7 +68,7 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 | `vehicles` / `hubs` | Fleet table / stock left at each hub |
 | `route P0 P4` | Fastest route plus alternatives between places or nodes |
 | `events [N] [type]` | Recent events from the event bus |
-| `add` or `add key=value ...` | New emergency (guided form or one line); shows every validation error |
+| `add` or `add key=value ...` | New emergency (guided form or one line); shows every validation error. In the form, an unknown location (e.g. "Toronto") is asked again with the closest matches (`y` accepts the first, `?` lists places, `cancel` stops) |
 | `close 42` / `close 11 12` / `reopen ...` | Close or reopen a road by edge id or by its two end nodes |
 | `closenode 20` / `reopennode 20` | Close or reopen an intersection |
 | `breakdown V2` / `repair V2` | Vehicle breakdown (its cargo is reassigned) / repair |

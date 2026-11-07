@@ -150,7 +150,7 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
 | Simultaneous emergencies | heap order plus tie-break; most urgent gets first pick; aging keeps the rest moving |
 | Breakdowns | cargo reassigned (stranded-cargo pickup) or stock returned |
 | Unreachable destination | temporary: Delayed, then Failed after the grace period; disconnected: Failed at once |
-| Invalid inputs | every problem listed in one message; the record is rejected and the rest continue |
+| Invalid inputs | every problem listed in one message; the record is rejected and the rest continue. An unknown location gets the closest matches (`suggest_locations`: part of a name, words in any order, or a typo via `difflib`), and the CLI form asks again instead of rejecting |
 | Empty dataset | loads with warnings; requests are rejected with a clear reason; no crash |
 | Disconnected graph | BFS distinguishes "closed" from "never connected" |
 | Unknown keys / missing fields | ignored with a warning / defaults from config; `_`-prefixed keys are comments |

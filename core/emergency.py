@@ -20,10 +20,14 @@ Field rules (what judges will ask about):
   submitted_at      time; if missing we use the current clock (with a warning)
 """
 
+import difflib
 from dataclasses import dataclass, field
 
 from core.state_machine import CrisisState, TERMINAL_STATES
-from core.utils import fmt_time, normalize_id, parse_time, to_bool, to_number
+from core.utils import fmt_time, id_sort_key, normalize_id, parse_time, to_bool, to_number
+
+# Words too common to count as a match ("Yonge St & King St" vs "king and yonge").
+_FILLER_WORDS = {"and", "the", "st", "ave", "rd", "at", "of", "near", "&"}
 
 # Other names we accept for each field (helps if Dataset 2 input files use
 # slightly different headers). First match wins.
@@ -157,7 +161,54 @@ def resolve_location(value, graph, pois):
     for poi in pois.values():  # allow the POI's name, case-insensitive
         if isinstance(value, str) and poi.name.lower() == value.strip().lower():
             return poi.node, poi, None
-    return None, None, f"location {value!r} is not a known place id, place name, or node id"
+    message = f"location {value!r} is not a known place id, place name, or node id"
+    hints = suggest_locations(str(value), graph, pois)
+    if hints:
+        message += "; did you mean " + " or ".join(f"{v} ({label})" for v, label, _kind in hints) + "?"
+    return None, None, message
+
+
+def suggest_locations(text, graph, pois, limit=3):
+    """Closest places/intersections to free text, best first.
+
+    Returns [(value to type, readable label, "place" or "intersection")].
+    Scoring (higher is better), per candidate:
+      3.0          the whole text appears in its id/name/address/kind
+                   ("Toronto" -> "Toronto General Hospital")
+      2 x share    share of the text's words found in it, if at least half
+                   ("king and yonge" -> "Yonge St & King St")
+      ratio        difflib similarity (typos), if >= 0.6 for the whole name
+                   or >= 0.8 for a single word ("waterfrnt" -> "waterfront")
+    Places (POIs) are listed before plain intersections on equal score.
+    Works on any dataset: it only reads the loaded names.
+    """
+    query = text.strip().lower()
+    if not query:
+        return []
+    words = [w for w in query.replace(",", " ").split() if len(w) >= 3 and w not in _FILLER_WORDS]
+    candidates = [(p.id, p.name, f"{p.id} {p.name} {p.address} {p.kind}".lower(), "place", 0)
+                  for p in pois.values()]
+    candidates += [(n.id, n.name, f"{n.id} {n.name}".lower(), "intersection", 1)
+                   for n in graph.nodes.values()]
+    scored = []
+    for value, name, haystack, kind, order in candidates:
+        if query in haystack:
+            score = 3.0
+        elif words and sum(w in haystack for w in words) / len(words) >= 0.5:
+            score = 2.0 * sum(w in haystack for w in words) / len(words)
+        else:
+            whole = max(difflib.SequenceMatcher(None, query, name.lower()).ratio(),
+                        difflib.SequenceMatcher(None, query, str(value).lower()).ratio())
+            per_word = max((difflib.SequenceMatcher(None, q, h).ratio()
+                            for q in words for h in haystack.split()), default=0.0)
+            if whole >= 0.6 or per_word >= 0.8:
+                score = max(whole, per_word)
+            else:
+                score = 0.0
+        if score > 0:
+            scored.append((-score, order, id_sort_key(value), value, name, kind))
+    scored.sort(key=lambda item: item[:3])
+    return [(value, name, kind) for _s, _o, _k, value, name, kind in scored[:limit]]
 
 
 def validate_emergency(raw, graph, pois, config, existing_ids=(), auto_id="E?", now=0.0):
