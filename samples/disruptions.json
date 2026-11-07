@@ -1,0 +1,14 @@
+{
+  "_note": "AI-GENERATED DRAFT - team to review and modify. SAMPLE DATA (team-made, NOT official competition data). Timed to hit vehicles that are on the road in samples/emergencies.json.",
+  "disruptions": [
+    {"time": "08:08", "type": "vehicle_breakdown", "vehicle": "V9", "reason": "refrigeration unit engine fault while carrying cold food to E3"},
+    {"time": "08:11", "type": "road_closure", "edge": 19, "reason": "water main break on King St (University-Bay)"},
+    {"time": "08:15", "type": "road_closure", "edges": [74, 81], "reason": "storm debris blocks both roads into Parliament & Bloor"},
+    {"time": "08:46", "type": "node_closure", "node": 30, "reason": "police incident at Jarvis & Dundas"},
+    {"time": "08:50", "type": "road_reopen", "edge": 81, "reason": "Bloor St debris cleared"},
+    {"time": "09:00", "type": "vehicle_repair", "vehicle": "V9", "reason": "mechanic on site"},
+    {"time": "09:05", "type": "node_reopen", "node": 30, "reason": "incident cleared"},
+    {"time": "09:20", "type": "restock", "hub": "P1", "normal": 50, "cold": 15, "reason": "partial donation arrives"},
+    {"time": "09:30", "type": "road_reopen", "edge": 19, "reason": "repair finished"}
+  ]
+}

@@ -1,0 +1,11 @@
+# Python caches
+__pycache__/
+*.pyc
+
+# Submission zip is a build artifact: rebuild it with `python3 make_zip.py`
+*.zip
+
+# OS / editor files
+.DS_Store
+.vscode/
+.idea/
