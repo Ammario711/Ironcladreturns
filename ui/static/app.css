@@ -53,7 +53,7 @@
 
 /* Dark mode: chosen by the toggle, or by the computer's setting if no choice was made. */
 :root[data-theme="dark"] {
-  --bg: #0a0f1c; --surface: #111827; --surface-2: #0f1626; --surface-3: #1a2336;
+  --bg: #280a31; --surface: #111827; --surface-2: #0f1626; --surface-3: #1a2336;
   --border: #1f2a3d; --border-strong: #2c3a52;
   --text: #e5e9f0; --text-2: #cbd5e1; --muted: #93a1b5; --faint: #64748b;
   --accent: #60a5fa; --accent-2: #93c5fd; --accent-soft: #15254a;
