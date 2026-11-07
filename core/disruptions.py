@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Disruption events (not in the dataset; they come from a separate file,
 the CLI, the scenario generator, or a saved weather snapshot) and their validation.
 
@@ -149,8 +149,8 @@ def parse_disruption(raw, graph, vehicles, hubs, now=0.0, weather_factors=None):
         d.edges = _road_edges(raw, graph, errors)
         try:
             d.factor = to_number(raw.get("factor"))
-            if d.factor <= 0:
-                raise ValueError("factor must be > 0")
+            if d.factor < 1.0:
+                raise ValueError("factor must be >= 1 (1 clears the jam, >1 slows the road)")
         except ValueError as exc:
-            errors.append(f"traffic needs a 'factor' like 2.0 (twice as slow) or 1 to clear ({exc})")
+            errors.append(f"traffic needs a 'factor' >= 1 like 2.0 (twice as slow) or 1 to clear ({exc})")
     return (None, errors) if errors else (d, [])

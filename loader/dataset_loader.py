@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Load a city dataset JSON file (Dataset 1 = toronto-downtown.json).
 
 Robustness rules (the hidden tests check these):
@@ -110,7 +110,7 @@ def parse_dataset(raw, config):
     if not vehicles:
         warnings.append("Dataset has no vehicles: no deliveries can be made")
 
-    center = raw.get("center") if isinstance(raw.get("center"), list) else None
+    center = _parse_center(raw.get("center"), warnings)
     return Dataset(
         id=str(raw.get("id", "unnamed-dataset")),
         name=str(raw.get("name", raw.get("id", "Unnamed dataset"))),
@@ -142,6 +142,34 @@ def _optional_float(record, key):
         return to_number(record[key]) if record.get(key) is not None else None
     except ValueError:
         return None
+
+
+def _coords(record, label, warnings):
+    """Validated (lat, lng) in geographic bounds, or (None, None) with a warning."""
+    has_lat = record.get("lat") is not None
+    has_lng = record.get("lng") is not None
+    if not has_lat and not has_lng:
+        return None, None
+    lat = _optional_float(record, "lat")
+    lng = _optional_float(record, "lng")
+    if lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        warnings.append(f"{label}: invalid or out-of-range lat/lng ({record.get('lat')!r}, {record.get('lng')!r}); coordinates ignored")
+        return None, None
+    return lat, lng
+
+
+def _parse_center(value, warnings):
+    if value is None:
+        return None
+    if isinstance(value, list) and len(value) == 2:
+        try:
+            lat, lng = to_number(value[0]), to_number(value[1])
+            if -90 <= lat <= 90 and -180 <= lng <= 180:
+                return [lat, lng]
+        except ValueError:
+            pass
+    warnings.append(f"'center' ignored: expected [lat, lng] in geographic range (got {value!r})")
+    return None
 
 
 def _read_terrain_section(section, warnings):
@@ -202,8 +230,9 @@ def _load_nodes(records, graph, warnings):
         if node_id in graph.nodes:
             warnings.append(f"nodes[{i}] skipped: duplicate node id {node_id!r}")
             continue
+        lat, lng = _coords(rec, f"nodes[{i}] ({node_id})", warnings)
         graph.add_node(Node(id=node_id, name=str(rec.get("name") or f"Node {node_id}"),
-                            lat=_optional_float(rec, "lat"), lng=_optional_float(rec, "lng")))
+                            lat=lat, lng=lng))
 
 
 def _load_edges(records, graph, warnings, default_speed_kmh):
@@ -257,9 +286,10 @@ def _load_pois(records, graph, warnings):
         if poi_id in pois:
             warnings.append(f"pois[{i}] skipped: duplicate id {poi_id!r}")
             continue
+        lat, lng = _coords(rec, f"pois[{i}] ({poi_id})", warnings)
         pois[poi_id] = Poi(id=poi_id, name=str(rec.get("name") or poi_id),
                            kind=str(rec.get("kind") or "other").strip().lower(), node=node,
-                           lat=_optional_float(rec, "lat"), lng=_optional_float(rec, "lng"),
+                           lat=lat, lng=lng,
                            address=str(rec.get("address") or ""))
     return pois
 

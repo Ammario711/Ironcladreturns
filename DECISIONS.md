@@ -209,7 +209,7 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
 - **Why there is no live traffic API.** There is no free traffic data feed that works without an account and API key (TomTom, HERE and Google all need a key). It would also make runs non-repeatable. Traffic is therefore modelled as configurable rush hours plus `traffic` incident events. Swapping in a real feed later only means producing those same `traffic` events.
 - **Effect on decisions.**
   - The matcher's ETAs, Dijkstra route choices for new trips, and the deadline-slack part of the score all use current costs, so priorities and "on time / LATE" predictions react to the weather.
-  - Vehicles already driving get their remaining arrival times recomputed (`Trip.retime`): the share of the current road still to drive is scaled, later roads use new costs, and loading time is kept. A `route-updated` event reports the new ETA.
+  - Vehicles already driving get their remaining arrival times recomputed (`Trip.retime`): `Trip.edge_costs` stores each leg's planned/retimed cost so the remaining fraction of the current road stays exact across any number of speed changes, later roads use new costs, and loading time is kept. A `route-updated` event reports the new ETA.
 - **No Re-Routing for slowdowns.** A slow road is still usable, so the route is kept and the state does not change; Re-Routing stays reserved for a route that becomes unavailable. A jam can be made impassable with a road closure.
 - **HTTPS on macOS.** If Python cannot find certificates (common with python.org installs), the download retries with the operating system's certificate bundle. Verification is never switched off.
 

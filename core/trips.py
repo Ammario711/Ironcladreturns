@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """A Trip = one vehicle carrying food from one source to one emergency.
 
 Timeline model (kept simple on purpose):
@@ -42,6 +42,7 @@ class Trip:
     nodes: list = field(default_factory=list)
     edges: list = field(default_factory=list)
     times: list = field(default_factory=list)
+    edge_costs: list = field(default_factory=list)  # full-edge cost used when planning/retiming each leg
     pickup_index: int | None = None   # index in nodes of the source; None = already loaded
     pickup_time: float = 0.0          # when loading finishes
     delivery_time: float = 0.0        # when unloading finishes
@@ -108,19 +109,24 @@ class Trip:
             return  # already at the site, unloading
         # When does (did) the vehicle leave node i? After loading, if it is the pickup.
         depart = self.pickup_time if i == self.pickup_index else self.times[i]
-        old_road = self.times[i + 1] - depart
-        if now <= depart or old_road <= 0:
-            clock = depart + graph.edge_cost(self.edges[i])  # has not left node i yet
+        old_cost = self.edge_costs[i] if i < len(self.edge_costs) else (self.times[i + 1] - depart)
+        first_cost = graph.edge_cost(self.edges[i])
+        if now <= depart or old_cost <= 0:
+            clock = depart + first_cost  # has not left node i yet
         else:
-            share_left = (self.times[i + 1] - now) / old_road
-            clock = now + share_left * graph.edge_cost(self.edges[i])
+            share_left = max(0.0, min(1.0, (self.times[i + 1] - now) / old_cost))
+            clock = now + share_left * first_cost
         times = self.times[:i + 1] + [clock]
+        costs = list(self.edge_costs[:i]) + [first_cost]
         for j in range(i + 1, len(self.edges)):
             if j == self.pickup_index:
                 clock += load_minutes  # still has to load at the hub
-            clock += graph.edge_cost(self.edges[j])
+            cost = graph.edge_cost(self.edges[j])
+            costs.append(cost)
+            clock += cost
             times.append(clock)
         self.times = times
+        self.edge_costs = costs
         if self.pickup_index is not None and self.pickup_index > i:
             self.pickup_time = times[self.pickup_index] + load_minutes
         self.delivery_time = max(times[-1], self.pickup_time) + unload_minutes
@@ -143,10 +149,13 @@ class Trip:
             self.km = to_dest.km
         clock = start_time
         self.times = [clock]
+        self.edge_costs = []
         for i, edge_id in enumerate(self.edges):
             if i == self.pickup_index:
                 clock += load_minutes  # loading happens before leaving the source
-            clock += graph.edge_cost(edge_id)
+            cost = graph.edge_cost(edge_id)
+            self.edge_costs.append(cost)
+            clock += cost
             self.times.append(clock)
         if self.pickup_index is None:
             self.pickup_time = start_time

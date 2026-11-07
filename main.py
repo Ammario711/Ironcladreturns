@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Entry point.
 
 Examples (run from the project folder):
@@ -79,7 +79,6 @@ def weather_events(args, dataset, start):
     if args.fetch_weather:
         lat, lng = city_point(dataset)
         snapshot = fetch_open_meteo(lat, lng, args.fetch_weather)
-        os.makedirs(WEATHER_DIR, exist_ok=True)
         safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", dataset.id)
         path = os.path.join(WEATHER_DIR, f"{safe_id}_{args.fetch_weather}.json")
         save_snapshot(snapshot, path)
@@ -129,9 +128,16 @@ def main(argv=None):
         disruptions += gen_d
         print(f"Generated {len(gen_e)} emergencies and {len(gen_d)} disruption events (seed {args.seed})")
     if args.weather or args.fetch_weather:
-        start = earliest_time(emergencies, ("submitted_at", "submission_time", "submitted", "time"))
+        em_start = earliest_time(emergencies, ("submitted_at", "submission_time", "submitted", "time"))
         dis_start = earliest_time(disruptions, ("time", "at"))
-        start = min(t for t in (start, dis_start) if t is not None) if (start or dis_start) else None
+        candidates = [t for t in (em_start, dis_start) if t is not None]
+        if candidates:
+            start = min(candidates)
+        elif emergencies:  # undated emergencies: avoid forcing a 00:00 midnight start
+            earliest_due = earliest_time(emergencies, ("deadline", "due", "deliver_by"))
+            start = min(480.0, max(0.0, earliest_due - 60.0)) if earliest_due is not None else 480.0
+        else:
+            start = None
         try:
             disruptions += weather_events(args, dataset, start)
         except WeatherError as exc:

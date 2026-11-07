@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Real weather for a real city, from Open-Meteo (free, no API key), saved
 to a file ONCE and replayed from that file.
 
@@ -24,6 +23,7 @@ condition into a travel-time factor. Data: Open-Meteo.com, CC BY 4.0.
 
 import datetime
 import json
+import math
 import os
 import ssl
 import urllib.error
@@ -68,10 +68,18 @@ def weather_condition(code):
 def city_point(dataset):
     """(lat, lng) for the weather request: the dataset's centre, else the average node."""
     if dataset.center and len(dataset.center) == 2:
-        return float(dataset.center[0]), float(dataset.center[1])
-    points = [(n.lat, n.lng) for n in dataset.graph.nodes.values() if n.lat is not None and n.lng is not None]
+        try:
+            lat, lng = float(dataset.center[0]), float(dataset.center[1])
+            if math.isfinite(lat) and math.isfinite(lng) and -90 <= lat <= 90 and -180 <= lng <= 180:
+                return lat, lng
+        except (TypeError, ValueError):
+            pass  # fall back to node coordinates if center is malformed
+    points = [(n.lat, n.lng) for n in dataset.graph.nodes.values()
+              if n.lat is not None and n.lng is not None
+              and math.isfinite(n.lat) and math.isfinite(n.lng)
+              and -90 <= n.lat <= 90 and -180 <= n.lng <= 180]
     if not points:
-        raise WeatherError("dataset has no coordinates, so we cannot ask for its weather")
+        raise WeatherError("dataset has no valid coordinates, so we cannot ask for its weather")
     return sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)
 
 
@@ -145,8 +153,14 @@ def fetch_open_meteo(lat, lng, date_text, timeout=20):
 
 
 def save_snapshot(snapshot, path):
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(snapshot, handle, indent=1)
+    try:
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(snapshot, handle, indent=1)
+    except OSError as exc:
+        raise WeatherError(f"cannot save weather file {path}: {exc}") from None
 
 
 def load_snapshot(path):

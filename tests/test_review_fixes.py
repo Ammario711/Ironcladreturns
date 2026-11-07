@@ -1,5 +1,4 @@
-# AI-GENERATED DRAFT - team to review and modify
-# Drafted with Claude (Anthropic, model claude-opus-5-5) on 2026-11-07. Cite in README.
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Tests for the fixes made after the external (Gemini) code review.
 
 One class per area, in the same order as the review: input, loaders/config,
@@ -75,6 +74,7 @@ class InputSchemaTests(unittest.TestCase):
         self.assertIn("lat must be -90..90", " ".join(r.errors))
 
     def test_blank_or_non_text_fields_rejected(self):
+        self.assertIn("id cannot be blank", " ".join(self.check(food_normal=5, id="").errors))
         self.assertIn("id cannot be blank", " ".join(self.check(food_normal=5, id="   ").errors))
         self.assertIn("id must be text", " ".join(self.check(food_normal=5, id=[1]).errors))
         self.assertTrue(self.check(food_normal=5, id=7).ok)  # numeric ids are fine
@@ -306,6 +306,15 @@ class ScoringSystemSimulatorTests(unittest.TestCase):
         sim.schedule_emergency(request(id="UNDATED", submitted_at=None))
         sim.run(until=480)
         self.assertEqual(s.emergencies["UNDATED"].submitted_at, 480)  # not 00:00
+
+    def test_advance_moves_forward_when_minutes_smaller_than_step(self):
+        s = make_system(overrides={"simulation": {"step_minutes": 5}})
+        sim = Simulator(s)
+        sim.schedule_emergency(request())
+        self.assertEqual(sim.advance(1), 481)
+        self.assertEqual(s.now, 481)
+        self.assertEqual(sim.advance(7), 488)
+        self.assertEqual(s.now, 488)
 
     def test_report_shows_na_and_every_rejected_request(self):
         s = make_system()

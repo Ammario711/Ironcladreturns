@@ -1,13 +1,13 @@
 
 # PROGRESS: Ironcladreturns, Urban Food Crisis Response and Routing System
 
-**Last updated:** 2026-11-07. All 9 draft steps are DONE, plus location suggestions and the fixes from the Gemini review, including a live web dashboard (merged to `main` in PR #1). Now on branch `feature/city-conditions`: a fuller city timeline plus weather / rush hour / traffic. 124 tests pass. The demo runs.
-**Status:** complete first draft (AI-generated). **Next:** team review, rewriting, and citations (see "Next steps").
+**Last updated:** 2026-11-07. All 9 core steps, location suggestions, live web dashboard, fuller city timeline + Open-Meteo weather / rush hour / traffic (`feature/city-conditions`), and Round-1 + Round-2 review fixes are merged on `main`. **131 tests pass.** The demo runs cleanly.
+**Status:** active team integration & refinement on `main`. **Next:** final team review notes in the tracking table below, Dataset 2 config tuning when released, and `python3 make_zip.py` before submission.
 
 ## Resume here (teammate or another AI)
 1. Read this file, then [README.md](README.md) (how to run) and [DECISIONS.md](DECISIONS.md) (why it works this way).
 2. Python 3.10+, standard library only, nothing to install. Run every command from the project root.
-3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 124 tests OK.
+3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 131 tests OK.
 4. Demo: `python3 main.py --demo --run` (or `--quiet` for the report only, drop `--run` for the interactive CLI, or use `--web` for the browser dashboard at http://localhost:8765).
 5. Before submitting: `python3 make_zip.py` creates `Ironcladreturns_Programming_Code.zip`.
 
@@ -20,7 +20,7 @@
 | 4 | Greedy matcher | DONE | Cold first, reefer fill, stranded cargo first, ETA-greedy, reservations, reasons |
 | 5 | State machine | DONE | Exact 9 states, transition table, timestamped explanations, notes |
 | 6 | Event bus | DONE | 7 required + 4 extra events; dispatcher/system react via subscriptions |
-| 7 | Simulator + tests | DONE | 106 tests now, including hidden-test categories; seeded generator; Dataset-2-style fixture |
+| 7 | Simulator + tests | DONE | 131 tests now, including hidden-test categories; seeded generator; Dataset-2-style fixture |
 | 8 | CLI | DONE | `cmd`-based dashboard; `--run` batch mode; `--demo`; `--generate N --seed S` |
 | 9 | README + DECISIONS + zip | DONE | `make_zip.py` rebuilds the zip; presentation NOT drafted (rules forbid AI scripts) |
 
@@ -39,6 +39,7 @@ In progress: nothing.
 | Fuller city timeline in the sample: every closure reopens, a 2nd breakdown (V7, cargo rescued) + repair, food-bank restocks (normal food only, so E8 still shows the cold shortage), a traffic collision that clears | `samples/disruptions.json` | City ends the morning back to normal (tested) |
 | Weather / rush hour / traffic incidents change road costs; ETAs of moving vehicles are recomputed; new trips route around jams | `core/graph.py`, `core/system.py`, `core/trips.py` (`retime`), `core/dispatcher.py`, `core/disruptions.py` | New `weather` / `traffic` disruptions, `conditions-changed` event, CLI `weather` / `traffic` commands, dashboard shows conditions |
 | Real weather from Open-Meteo (free, no key), downloaded once and replayed | `loader/weather_loader.py`, `main.py --fetch-weather / --weather`, `samples/weather/` | Real snowy Toronto morning (2025-02-16) saved; tests use a fake network |
+| Round-2 review fixes + CLI cleanup (Antigravity): removed redundant `EOF`/`exit` CLI commands (keeping Ctrl-D clean exit); exact `Trip.retime` across multiple speed changes (`edge_costs`); rush-hour synced in `set_clock` before scoring/startup; `Simulator.advance` works when `minutes < step_minutes`; Dataset 2 coord/IO guards in `dataset_loader`/`weather_loader`; comma-safe `location_from_text`; `traffic` factor >= 1, finite config validation, `--weather` midnight/undated start, and `id: ""` rejection | `ui/cli.py`, `core/trips.py`, `core/dispatcher.py`, `core/system.py`, `sim/simulator.py`, `core/disruptions.py`, `core/emergency.py`, `loader/*.py`, `main.py`, `tests/*` | Merged `feature/city-conditions` to `main`; 131 unit tests passing; standardized `# AI-assisted ...` headers across `.py` files |
 
 **Parts of the weather/traffic idea we changed (and why):**
 - *Live traffic API:* no free source works without an account and key, a key would sit in a public repo, and live data makes runs non-repeatable. We use rush hours (config) + `traffic` incident events instead.
@@ -129,7 +130,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 
 ## Next steps (for the team)
 1. ~~Fill in the competitor names in README.md~~ DONE: Ammar, Haziq, Mihir, Daniel.
-2. **Review and rewrite** each file. As you go, change its header from `AI-GENERATED DRAFT - team to review and modify` to `Reviewed and modified by <name>: <what changed>`, and fill in the table below. The rules require meaningful modification and citation.
+2. **Review and verify** each file as a team, and fill in who reviewed/modified each module in the table below before final submission. Every `.py` file now carries an inline `# AI-assisted ...` citation comment referencing `README.md`.
 3. Re-tune the scoring weights and aging rate together (config only), and be ready to justify the numbers to judges.
 4. When Dataset 2 arrives, run `python3 main.py --dataset <file> --generate 10 --run` and read the loader warnings. Adjust `--config` only, not `/core`.
 5. ~~Optional stretch: live map dashboard~~ DONE: `python3 main.py --demo --web` (standard library, Server-Sent Events). Try it before the demo and decide whether to present it.

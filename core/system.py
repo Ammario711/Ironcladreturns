@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """CrisisResponseSystem: the single object the CLI / simulator talk to.
 
 It wires the components together through the event bus:
@@ -312,16 +312,16 @@ class CrisisResponseSystem:
 
     # ================================================================ clock
     def set_clock(self, now):
-        """Move the clock forward and record any deliveries that are due."""
+        """Move the clock forward, record due deliveries, and sync rush-hour conditions."""
         if now < self.now - 1e-9:
             raise ValueError(f"clock cannot go backwards ({fmt_time(now)} < {fmt_time(self.now)})")
         self.now = now
         self.dispatcher.advance_trips(now)
+        self._update_rush_hour(now)
 
     def tick(self, now):
         """One full update of the whole system at time `now`."""
         self.set_clock(now)
-        self._update_rush_hour(now)   # may slow every road (and update ETAs) before dispatching
         self._confirm_deliveries(now)
         self.refresh_priorities(now)
         self.dispatcher.dispatch_cycle(now)

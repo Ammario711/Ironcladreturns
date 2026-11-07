@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Read emergency / disruption input files.
 
 Accepted layouts (so a differently-shaped official file still loads):

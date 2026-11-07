@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Route planning with Dijkstra's algorithm (heapq).
 
 Why Dijkstra and not A*: edge cost is travel *time* scaled by terrain

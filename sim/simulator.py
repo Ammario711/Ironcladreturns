@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Scenario / disruption simulator: replays a timeline against the system.
 
 Fixed time step (default 1 simulated minute). At each step t:
@@ -74,7 +74,8 @@ class Simulator:
         if nothing has happened yet (so a request typed in at 00:00 is not skipped)."""
         if not self.started:
             self._place_undated()
-            nothing_yet = self.system.now == 0 and not self.system.bus.log
+            nothing_yet = self.system.now == 0 and not any(
+                ev.type != "conditions-changed" for ev in self.system.bus.log)
             if self._pending and nothing_yet:
                 return float(int(self._pending[0][0]))
         return self.system.now
@@ -126,15 +127,15 @@ class Simulator:
         return self.system.now
 
     def advance(self, minutes):
-        """Move forward `minutes` of simulated time (used by the CLI)."""
+        """Move forward `minutes` of simulated time (used by the CLI and web)."""
         t = self.start_time() if not self.started else self.system.now
         end = t + minutes
         if not self.started:
             self.step_to(t)
-        while t + self.step <= end + 1e-9:
-            t += self.step
+        while t < end - 1e-9:
+            t = min(t + self.step, end)
             self.step_to(t)
-        return t
+        return self.system.now
 
     # ------------------------------------------------------------ report
     def report(self):

@@ -1,4 +1,4 @@
-
+# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Priority scoring: how urgent is an emergency right now?
 
 score = 100 * sum(weight_i * factor_i) / sum(weight_i)      (0..100)

@@ -1,5 +1,5 @@
 {
-  "_note": "AI-GENERATED DRAFT - team to review and modify. Example override file: copy, edit, run with --config. Only keys you include are changed; everything else keeps the defaults in loader/config_loader.py.",
+  "_note": "Example override file: copy, edit, run with --config. Only keys you include are changed; everything else keeps the defaults in loader/config_loader.py.",
   "routing": {
     "_comment": "If Dataset 2 says w excludes terrain, give slow terrain types a factor > 1.",
     "terrain_multipliers": {"urban": 1.0, "rural": 1.0, "gravel": 1.3},
