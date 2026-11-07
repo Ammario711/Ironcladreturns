@@ -21,12 +21,15 @@ class InputFileError(Exception):
 
 def load_records(path, keys):
     try:
-        with open(path, encoding="utf-8") as handle:
+        # utf-8-sig also accepts files saved with a byte-order mark
+        with open(path, encoding="utf-8-sig") as handle:
             data = json.load(handle)
     except FileNotFoundError:
         raise InputFileError(f"Input file not found: {path}") from None
     except json.JSONDecodeError as exc:
         raise InputFileError(f"{path} is not valid JSON (line {exc.lineno}): {exc.msg}") from None
+    except (OSError, UnicodeDecodeError) as exc:  # a folder, no permission, not UTF-8 text...
+        raise InputFileError(f"Cannot read input file {path}: {exc}") from None
     if isinstance(data, list):
         return data
     if isinstance(data, dict):

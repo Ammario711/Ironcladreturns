@@ -71,6 +71,11 @@ def parse_disruption(raw, graph, vehicles, hubs, now=0.0):
     if kind in ("road_closure", "road_reopen"):
         try:
             if raw.get("edges") is not None:
+                # Must be a real, non-empty list: iterating the text "19" would
+                # silently close edges 1 and 9.
+                if not isinstance(raw["edges"], list) or not raw["edges"]:
+                    raise ValueError(f"'edges' must be a non-empty list like [19, 20] (got {raw['edges']!r}); "
+                                     "use 'edge' for a single road")
                 d.edges = [normalize_id(e) for e in raw["edges"]]
             elif raw.get("edge") is not None:
                 d.edges = [normalize_id(raw["edge"])]
@@ -82,7 +87,7 @@ def parse_disruption(raw, graph, vehicles, hubs, now=0.0):
             else:
                 errors.append("road disruption needs 'edge', 'edges', or 'a' and 'b'")
         except (ValueError, TypeError) as exc:
-            errors.append(f"bad edge id ({exc})")
+            errors.append(f"bad edge list ({exc})")
         for edge_id in d.edges:
             if edge_id not in graph.edges:
                 errors.append(f"edge {edge_id!r} does not exist")
@@ -105,8 +110,9 @@ def parse_disruption(raw, graph, vehicles, hubs, now=0.0):
             d.hub = normalize_id(raw.get("hub", raw.get("poi")))
             if d.hub not in hubs:
                 errors.append(f"hub {d.hub!r} does not exist")
-            d.normal = int(to_number(raw.get("normal", 0)))
-            d.cold = int(to_number(raw.get("cold", 0)))
+            # JSON null for an amount means "none of this type" (0).
+            d.normal = int(to_number(raw.get("normal") if raw.get("normal") is not None else 0))
+            d.cold = int(to_number(raw.get("cold") if raw.get("cold") is not None else 0))
             if d.normal < 0 or d.cold < 0 or d.normal + d.cold == 0:
                 errors.append("restock needs positive 'normal' and/or 'cold' amounts")
         except ValueError as exc:

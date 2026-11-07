@@ -10,7 +10,7 @@ gives exactly the same scenario (random.Random(seed), sorted inputs).
 
 import random
 
-from core.utils import fmt_time, id_sort_key
+from core.utils import fmt_time, id_sort_key, parse_time
 
 SITE_CATEGORIES = ("hospital", "shelter", "community", "school", "senior_home")
 
@@ -21,7 +21,9 @@ def generate_scenario(dataset, n_emergencies=8, n_disruptions=4, seed=42, start_
     graph = dataset.graph
     hub_nodes = {h.node for h in dataset.hubs.values()}
     # Prefer named delivery sites (POIs that are not hubs); else any non-hub node.
-    sites = [p for p in sorted(dataset.pois.values(), key=lambda p: id_sort_key(p.id)) if p.kind != "hub"]
+    # A hub is not a delivery site, whatever its "kind" says in the dataset.
+    sites = [p for p in sorted(dataset.pois.values(), key=lambda p: id_sort_key(p.id))
+             if p.kind != "hub" and p.id not in dataset.hubs]
     nodes = [n for n in sorted(graph.nodes, key=id_sort_key) if n not in hub_nodes] or sorted(graph.nodes, key=id_sort_key)
     if not nodes:
         return [], []
@@ -75,5 +77,6 @@ def generate_scenario(dataset, n_emergencies=8, n_disruptions=4, seed=42, start_
                                 "reason": "generated breakdown"})
             disruptions.append({"time": fmt_time(t + rng.randint(30, 90)), "type": "vehicle_repair",
                                 "vehicle": vehicle, "reason": "generated repair"})
-    disruptions.sort(key=lambda d: d["time"])
+    # Sort by real time, not text ("00:10+1d" must come after "23:50").
+    disruptions.sort(key=lambda d: parse_time(d["time"]))
     return emergencies, disruptions

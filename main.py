@@ -5,6 +5,7 @@
 Examples (run from the project folder):
   python3 main.py --demo --run                 # Dataset 1 + sample scenario, print everything
   python3 main.py --demo                       # same scenario, interactive CLI
+  python3 main.py --demo --web                 # same scenario, live web dashboard (http://localhost:8765)
   python3 main.py --dataset path/to/dataset2.json --generate 10 --run
   python3 main.py --dataset X --emergencies E.json --disruptions D.json --run
 
@@ -24,6 +25,7 @@ from loader.input_loader import InputFileError, load_disruptions_file, load_emer
 from sim.scenario_generator import generate_scenario
 from sim.simulator import Simulator
 from ui.cli import CrisisCLI, format_event
+from ui.web import Dashboard
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE_EMERGENCIES = os.path.join(HERE, "samples", "emergencies.json")
@@ -44,6 +46,9 @@ def build_parser():
     p.add_argument("--run", action="store_true", help="batch mode: run the scenario to the end and print a report")
     p.add_argument("--until", help="batch mode: stop at this clock time (HH:MM)")
     p.add_argument("--quiet", action="store_true", help="batch mode: print only the final report")
+    p.add_argument("--web", action="store_true",
+                   help="live web dashboard (map, queue, events) instead of the text CLI")
+    p.add_argument("--port", type=int, default=8765, help="port for --web (default 8765)")
     return p
 
 
@@ -87,6 +92,14 @@ def main(argv=None):
     for raw in disruptions:
         sim.schedule_disruption(raw)
     print(f"Scheduled {len(emergencies)} emergencies and {len(disruptions)} disruptions")
+
+    if args.web:
+        try:
+            Dashboard(system, sim).serve(port=args.port)
+        except OSError as exc:  # e.g. the port is already in use
+            print(f"ERROR: cannot start the dashboard on port {args.port}: {exc}", file=sys.stderr)
+            return 2
+        return 0
 
     if not args.run:
         CrisisCLI(system, sim).cmdloop()

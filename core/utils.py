@@ -29,7 +29,9 @@ def normalize_id(value):
         text = value.strip()
         if text == "":
             raise ValueError("id cannot be an empty string")
-        if text.lstrip("-").isdigit():
+        # Only plain ASCII integers like "33" or "-4" become ints. Anything else
+        # ("--1", "P3", "²") stays text instead of crashing int().
+        if re.fullmatch(r"-?[0-9]+", text):
             return int(text)
         return text
     raise ValueError(f"id must be a number or text (got {value!r})")
@@ -87,25 +89,40 @@ def to_bool(value):
     raise ValueError(f"expected true/false, got {value!r}")
 
 
+# "HH:MM", "HH:MM:SS", "HH:MM+1d" (what fmt_time prints after midnight), and
+# the same with an ISO date in front ("2026-11-07T08:30" or "2026-11-07 08:30").
+_CLOCK = re.compile(r"(?:\d{4}-\d{2}-\d{2}[T ])?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\+(\d+)d)?")
+
+
 def parse_time(value):
     """Convert a time value into minutes since the start of the scenario day.
 
     Accepted forms:
       * a number         -> already minutes (485 means 08:05)
-      * "HH:MM" text     -> clock time ("08:05" means 485)
+      * "HH:MM"          -> clock time ("08:05" means 485); "HH:MM:SS" also works
+      * "HH:MM+Nd"       -> N days later (the format fmt_time prints), so
+                            printed times can be typed back in
+      * ISO date + time  -> "2026-11-07T08:05"; the DATE IS IGNORED because a
+                            scenario is one day (use +Nd for later days)
       * numeric text     -> minutes ("485")
     Raises ValueError with a readable message for anything else.
     """
     if isinstance(value, bool) or value is None:
         raise ValueError(f"expected a time like 'HH:MM' or a number of minutes, got {value!r}")
     if isinstance(value, str) and ":" in value:
-        parts = value.strip().split(":")
-        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        match = _CLOCK.fullmatch(value.strip())
+        if not match:
             raise ValueError(f"time {value!r} is not in HH:MM format")
-        hours, mins = int(parts[0]), int(parts[1])
+        hours, mins = int(match.group(1)), int(match.group(2))
+        secs = int(match.group(3) or 0)
+        days = int(match.group(4) or 0)
+        if hours >= 24:
+            raise ValueError(f"time {value!r} has hours >= 24 (write a later day as HH:MM+1d)")
         if mins >= 60:
             raise ValueError(f"time {value!r} has minutes >= 60")
-        minutes = float(hours * 60 + mins)
+        if secs >= 60:
+            raise ValueError(f"time {value!r} has seconds >= 60")
+        minutes = days * MINUTES_PER_DAY + hours * 60 + mins + secs / 60.0
     else:
         try:
             minutes = to_number(value)
@@ -137,4 +154,5 @@ def haversine_km(lat1, lng1, lat2, lng2):
     d_phi = math.radians(lat2 - lat1)
     d_lambda = math.radians(lng2 - lng1)
     a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    a = min(1.0, max(0.0, a))  # rounding can push a a hair outside [0, 1]; asin/sqrt would fail
     return 2 * radius_km * math.asin(math.sqrt(a))

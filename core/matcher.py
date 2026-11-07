@@ -20,9 +20,11 @@ Constraints checked for every candidate pair:
 * fuel (optional): enough fuel for the whole trip at config fuel.per_km
 
 Order of work:
-* Cold food first: it is the scarcer, more constrained resource. A
-  refrigerated truck fills any spare space with normal food from the same
-  source.
+* Cold food first: it is the scarcer, more constrained resource. Among
+  on-time options, the reefer trip carrying the MOST cold food wins, so a
+  scarce reefer is not spent on a tiny remnant. A refrigerated truck fills
+  any spare space with normal food from the same source (cold is loaded
+  first, so this never takes the place of cold food).
 * Normal food next: prefer non-refrigerated trucks so reefers stay free
   for cold requests (config matching.prefer_non_refrigerated_for_normal).
 * Stranded cargo (food in a broken-down truck) for this emergency is used
@@ -30,7 +32,8 @@ Order of work:
 
 Partial fulfilment: whatever cannot be covered stays "unassigned" and is
 retried next cycle; `reasons` says why in plain words.
-Cost per emergency: 1 Dijkstra from the site + 1 per source used, plus
+Cost per emergency: 1 Dijkstra from the site + 1 per reachable source that
+has stock of the needed type (each tree is computed once and reused), plus
 O(sources x vehicles) per trip created.
 """
 
@@ -171,13 +174,21 @@ class Matcher:
                     continue
                 eta = (now + tree.dist[vehicle.location] + mcfg["load_minutes"]
                        + to_site.dist[source.node] + mcfg["unload_minutes"])
-                # Lower key = better. Read left to right:
-                #  stranded cargo first, (normal phase) non-reefers first,
-                #  earliest ETA, bigger load, then ids for determinism.
-                spare_reefer = (not cold_phase and vehicle.refrigerated
-                                and mcfg["prefer_non_refrigerated_for_normal"])
-                key = (0 if source.dedicated else 1, 1 if spare_reefer else 0, round(eta, 4),
-                       -(cold + normal), id_sort_key(source.id), id_sort_key(vehicle.id))
+                # Lower key = better. Read left to right.
+                if cold_phase:
+                    # Reefers are scarce, so each reefer trip should carry as much
+                    # cold food as possible: stranded cargo first, then on-time
+                    # options, then MOST cold units, then earliest ETA. A nearby hub
+                    # with only 5 cold units loses to one with 40 that is still on time.
+                    late = 1 if eta > emergency.deadline else 0
+                    key = (0 if source.dedicated else 1, late, -cold, round(eta, 4),
+                           -(cold + normal), id_sort_key(source.id), id_sort_key(vehicle.id))
+                else:
+                    # Normal food: stranded cargo first, non-reefers first,
+                    # earliest ETA, bigger load, then ids for determinism.
+                    spare_reefer = vehicle.refrigerated and mcfg["prefer_non_refrigerated_for_normal"]
+                    key = (0 if source.dedicated else 1, 1 if spare_reefer else 0, round(eta, 4),
+                           -(cold + normal), id_sort_key(source.id), id_sort_key(vehicle.id))
                 if best is None or key < best.key:
                     best = _Option(key, source, vehicle, normal, cold, fuel_needed)
         return best
@@ -251,5 +262,13 @@ class Matcher:
                 if s.id not in trees:
                     trees[s.id] = shortest_path_tree(self.graph, s.node)
             if not any(v.location in trees[s.id].dist for s in with_stock for v in idle):
-                result.add_reason(f"Idle {kind}s cannot reach any hub with {food} stock (road closures)")
+                # Is it closures, or is the fleet on a separate piece of the network?
+                # (Not marked permanent: a restock or repair can still fix it.)
+                linked = any(self.graph.connected(v.location, s.node, ignore_closures=True)
+                             for s in with_stock for v in idle)
+                if linked:
+                    result.add_reason(f"Idle {kind}s cannot reach any hub with {food} stock (road closures)")
+                else:
+                    result.add_reason(f"Idle {kind}s are on a part of the road network with no road at all "
+                                      f"to any hub with {food} stock")
         # fuel problems were already recorded per vehicle in _best_option

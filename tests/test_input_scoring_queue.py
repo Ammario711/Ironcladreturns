@@ -4,7 +4,7 @@
 
 import unittest
 
-from core.emergency import validate_emergency
+from core.emergency import suggest_locations, validate_emergency
 from core.priority_queue import CrisisQueue
 from core.scoring import aging_bonus, compute_score
 from helpers import TORONTO, config, request
@@ -74,6 +74,15 @@ class ValidationTests(unittest.TestCase):
     def test_duplicate_id(self):
         r = self.check(request(id="E1"), existing_ids={"E1"})
         self.assertIn("already used", " ".join(r.errors))
+
+    def test_unknown_location_suggests_close_matches(self):
+        r = self.check(request(location="Toronto"))
+        self.assertIn("did you mean P3", " ".join(r.errors))
+        g, pois = self.ds.graph, self.ds.pois
+        self.assertEqual(suggest_locations("waterfrnt", g, pois)[0][0], "P5")       # typo
+        self.assertEqual(suggest_locations("moss park", g, pois)[0][0], "P4")       # part of a name
+        self.assertEqual(suggest_locations("king and yonge", g, pois)[0][0], 12)    # intersection words
+        self.assertEqual(suggest_locations("xyzzy", g, pois), [])                  # no false hints
 
     def test_unknown_crisis_type_is_only_a_warning(self):
         r = self.check(request(crisis_type="alien invasion"))

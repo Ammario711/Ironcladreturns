@@ -11,7 +11,7 @@ could later replace it without touching /core.
 import cmd
 import shlex
 
-from core.emergency import resolve_location
+from core.emergency import resolve_location, suggest_locations, validate_emergency
 from core.routing import alternative_routes
 from core.utils import fmt_time, id_sort_key, normalize_id, parse_time
 from loader.input_loader import InputFileError, load_disruptions_file, load_emergencies_file
@@ -53,8 +53,23 @@ def parse_key_values(text):
     return result
 
 
-ADD_FIELDS = [  # (field, prompt) for the interactive `add` form
-    ("location", "Location (place id like P3, node id, or lat,lng)"),
+def location_from_text(text):
+    """Typed location -> value the validator understands.
+
+    "43.65, -79.38" -> {"lat": ..., "lng": ...};  "33" -> 33;  "P3" -> "P3"
+    """
+    if "," in text:
+        lat, lng = text.split(",", 1)
+        return {"lat": lat.strip(), "lng": lng.strip()}
+    try:
+        return normalize_id(text)
+    except ValueError:
+        return text
+
+
+MAX_PLACES_LISTED = 25  # bigger datasets: type part of a name to search instead
+
+ADD_FIELDS = [  # (field, prompt) for the interactive `add` form; location is asked separately
     ("crisis_type", "Crisis type (supply_shortage, flood, fire, power_outage, ...)"),
     ("location_category", "Location category (hospital, shelter, community, school, senior_home, other)"),
     ("people_affected", "People affected"),
@@ -195,10 +210,13 @@ class CrisisCLI(cmd.Cmd):
         """events [N] [TYPE] : last N events (default 20), optionally only one type, e.g. events 10 road-closed"""
         count, kind = 20, None
         for part in arg.split():
-            if part.isdigit():
+            if part.lstrip("-").isdigit():
                 count = int(part)
             else:
                 kind = part
+        if count < 1:  # log[-0:] would print the WHOLE log
+            print("Usage: events [N] [TYPE]  (N must be 1 or more)")
+            return
         log = [ev for ev in self.system.bus.log if kind is None or ev.type == kind]
         for event in log[-count:]:
             print(format_event(event))
@@ -220,19 +238,23 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
                 print(exc)
                 return
         else:
-            raw = {}
-            for field, question in ADD_FIELDS:
-                answer = input(f"  {question}: ").strip()
-                if answer:
-                    raw[field] = answer
-            if "location" in raw and "," in raw["location"]:
-                lat, lng = raw["location"].split(",", 1)
-                raw["location"] = {"lat": lat.strip(), "lng": lng.strip()}
-        if raw.get("location") and isinstance(raw["location"], str):
             try:
-                raw["location"] = normalize_id(raw["location"])
-            except ValueError:
-                pass
+                location = self._ask_location()  # keeps asking until valid (or 'cancel')
+                if location is None:
+                    print("Cancelled; nothing was added.")
+                    return
+                raw = {"location": location}
+                for field, question in ADD_FIELDS:
+                    answer = input(f"  {question}: ").strip()
+                    if answer:
+                        raw[field] = answer
+            except (EOFError, KeyboardInterrupt):  # Ctrl-D / Ctrl-C in the middle of the form
+                print("\nCancelled; nothing was added.")
+                return
+        if isinstance(raw.get("location"), str):
+            raw["location"] = location_from_text(raw["location"])  # also turns "43.65,-79.38" into lat/lng
+        if self._schedule_if_future(raw):
+            return
         result = self.system.submit_emergency(raw)
         if result.ok:
             print(f"Accepted {result.emergency.id}." + (f" Warnings: {'; '.join(result.warnings)}" if result.warnings else ""))
@@ -241,6 +263,77 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
             print("Rejected. Please fix:")
             for error in result.errors:
                 print(f"  - {error}")
+
+    def _schedule_if_future(self, raw):
+        """A request "submitted" later than the clock is scheduled for that time,
+        not dispatched early. It is checked now so mistakes show immediately.
+        Returns True if it was handled here (scheduled or rejected)."""
+        s = self.system
+        try:
+            submitted = parse_time(raw["submitted_at"]) if raw.get("submitted_at") else None
+        except ValueError:
+            return False  # submit_emergency will report the bad time
+        if submitted is None or submitted <= s.now:
+            return False
+        check = validate_emergency(raw, s.graph, s.pois, s.config, existing_ids=s.emergencies.keys(), now=submitted)
+        if not check.ok:
+            print("Rejected. Please fix:")
+            for error in check.errors:
+                print(f"  - {error}")
+            return True
+        self.sim.schedule_emergency(raw)
+        print(f"Scheduled: it will be submitted at {fmt_time(submitted)} (the clock is {fmt_time(s.now)}).")
+        return True
+
+    def _ask_location(self):
+        """Ask for the location until it is valid, helping when it is not.
+
+        Unknown text (e.g. "Toronto") gets the closest matches; 'y' accepts
+        the first one. '?' (or a blank answer) lists the places. 'cancel' stops.
+        Returns the location value, or None if the user cancelled.
+        """
+        g, pois = self.system.graph, self.system.pois
+        best = None  # top suggestion from the last failed attempt, used by 'y'
+        while True:
+            answer = input("  Location (place id like P3, place name, node id, or lat,lng; '?' lists places): ").strip()
+            if answer.lower() == "cancel":
+                return None
+            if answer.lower() in ("y", "yes") and best is not None:
+                answer = str(best)
+            if answer in ("", "?") or answer.lower() == "list":
+                if answer == "":
+                    print("    A location is required.")
+                self._print_places()
+                continue
+            value = location_from_text(answer)
+            node, poi, _problem = resolve_location(value, g, pois)
+            if node is not None:
+                where = f"{poi.id} {poi.name}" if poi else g.node_label(node)
+                print(f"    Using {where} (node {node}).")
+                return value
+            print(f"    {answer!r} is not a known place, intersection, or lat,lng.")
+            hints = suggest_locations(answer, g, pois)
+            if hints:
+                best = hints[0][0]
+                print("    Did you mean:")
+                for hint_value, label, kind in hints:
+                    print(f"      {str(hint_value):<5} {label}  [{kind}]")
+                print(f"    Type y to use {best}, type another location, '?' to list places, or 'cancel'.")
+            else:
+                best = None
+                print("    No close match. These are the places in this dataset:")
+                self._print_places()
+
+    def _print_places(self):
+        """List the dataset's named places (delivery sites first, hubs last)."""
+        pois = sorted(self.system.pois.values(), key=lambda p: (p.kind == "hub", id_sort_key(p.id)))
+        for poi in pois[:MAX_PLACES_LISTED]:
+            print(f"      {str(poi.id):<5} {poi.name}  [{poi.kind}]")
+        if len(pois) > MAX_PLACES_LISTED:
+            print(f"      ... and {len(pois) - MAX_PLACES_LISTED} more: type part of a name to search")
+        if not pois:
+            print("      (this dataset has no named places; use a node id or lat,lng)")
+        print("    You can also type any intersection node id (see 'route') or lat,lng.")
 
     def _disrupt(self, raw):
         ok, message = self.system.apply_disruption(raw)
@@ -315,6 +408,10 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
             minutes = float(arg) if arg.strip() else 1.0
         except ValueError:
             print("Usage: tick [MINUTES]")
+            return
+        limit = self.sim.max_minutes
+        if not (0 < minutes <= limit):  # also rejects nan and inf, which would loop forever
+            print(f"MINUTES must be more than 0 and at most {limit:g}")
             return
         end = self.sim.advance(minutes)
         print(f"Clock is now {fmt_time(end)}.")

@@ -6,7 +6,7 @@ import os
 
 from core.system import CrisisResponseSystem
 from core.trips import ACTIVE_STATUSES
-from loader.config_loader import deep_merge, load_config
+from loader.config_loader import apply_overrides
 from loader.dataset_loader import load_dataset, parse_dataset
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,8 +17,8 @@ SAMPLE_DISRUPTIONS = os.path.join(ROOT, "samples", "disruptions.json")
 
 
 def config(overrides=None):
-    cfg = load_config()
-    return deep_merge(cfg, overrides) if overrides else cfg
+    """Same path as `--config`: defaults + overrides, validated."""
+    return apply_overrides(overrides or {})
 
 
 def make_system(path=TORONTO, overrides=None, raw=None):
@@ -47,6 +47,8 @@ def check_invariants(test, system):
         if trip.status in ACTIVE_STATUSES:
             busy_vehicles.append(trip.vehicle_id)
     test.assertEqual(len(busy_vehicles), len(set(busy_vehicles)), "a vehicle is on two active trips")
+    for vehicle in system.vehicles.values():
+        test.assertGreaterEqual(vehicle.fuel, -1e-6, f"vehicle {vehicle.id} fuel went negative")
     for hub in system.hubs.values():
         test.assertGreaterEqual(hub.normal, 0, f"hub {hub.id} normal stock went negative")
         test.assertGreaterEqual(hub.cold, 0, f"hub {hub.id} cold stock went negative")

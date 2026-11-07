@@ -61,11 +61,12 @@ class Dataset:
 def load_dataset(path, config):
     """Read and parse a dataset file. Raises DatasetError on fatal problems."""
     try:
-        with open(path, encoding="utf-8") as handle:
+        # utf-8-sig also accepts files saved with a byte-order mark (some Windows editors add one)
+        with open(path, encoding="utf-8-sig") as handle:
             text = handle.read()
     except FileNotFoundError:
         raise DatasetError(f"Dataset file not found: {path}") from None
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:  # a folder, no permission, not UTF-8 text...
         raise DatasetError(f"Cannot read dataset file {path}: {exc}") from None
     if text.strip() == "":
         raise DatasetError(f"Dataset file {path} is empty")
@@ -86,17 +87,22 @@ def parse_dataset(raw, config):
     if unknown:
         warnings.append(f"Ignoring unknown top-level keys: {', '.join(unknown)}")
 
+    # Terrain speed factors, lowest to highest precedence:
+    #   built-in defaults  ->  the dataset's own "terrain" section  ->  values the
+    #   team put in a --config file (so an explicit config always wins).
     routing_cfg = config["routing"]
     terrain = dict(routing_cfg["terrain_multipliers"])
     terrain.update(_read_terrain_section(raw.get("terrain"), warnings))
+    terrain.update(config.get("_overrides", {}).get("routing", {}).get("terrain_multipliers", {}))
     graph = Graph(terrain_multipliers=terrain, highway_multiplier=routing_cfg["highway_multiplier"])
 
     _load_nodes(_as_list(raw, "nodes", warnings), graph, warnings)
     _load_edges(_as_list(raw, "edges", warnings), graph, warnings, routing_cfg["default_speed_kmh"])
     pois = _load_pois(_as_list(raw, "pois", warnings), graph, warnings)
     hubs = _load_hubs(_as_list(raw, "hubs", warnings), pois, graph, warnings, config["units"])
-    truck_key = "trucks" if "trucks" in raw else "vehicles"
-    vehicles = _load_vehicles(_as_list(raw, truck_key, warnings), graph, pois, warnings, config)
+    # "trucks" is the official key; fall back to "vehicles" if trucks is missing, null or empty.
+    truck_records = _as_list(raw, "trucks", warnings) or _as_list(raw, "vehicles", warnings)
+    vehicles = _load_vehicles(truck_records, graph, pois, warnings, config)
 
     if not graph.nodes:
         warnings.append("Dataset has no usable nodes: every emergency will be rejected as an unknown location")
@@ -140,28 +146,47 @@ def _optional_float(record, key):
 
 
 def _read_terrain_section(section, warnings):
-    """Dataset 1 has "terrain": []. If Dataset 2 lists terrain types with a
-    speed factor (e.g. {"type": "gravel", "multiplier": 1.4}) we use them.
+    """Turn the dataset's "terrain" section into {terrain type: COST multiplier}.
+
+    Dataset 1 has "terrain": []. Shapes we understand for Dataset 2:
+      list: [{"type": "gravel", "multiplier": 1.4}, ...]
+      dict: {"gravel": 1.4}  or  {"gravel": {"speed_factor": 0.7}}
+    "multiplier" / "factor" / "cost_multiplier" multiply travel cost directly.
+    "speed_factor" is a SPEED (0.5 = half speed), so cost is 1 / speed_factor.
     Anything we cannot interpret is ignored with a warning.
     """
+    if isinstance(section, dict):  # {"gravel": 1.4} -> same shape as the list form
+        items = [(str(name), v if isinstance(v, dict) else {"multiplier": v}) for name, v in section.items()]
+    elif isinstance(section, list):
+        items = []
+        for i, item in enumerate(section):
+            if not isinstance(item, dict):
+                warnings.append(f"terrain[{i}] is not an object; ignored")
+                continue
+            name = next((item[k] for k in ("type", "name", "terrain", "id") if k in item), None)
+            items.append((name, item))
+    else:
+        return {}
     factors = {}
-    if not isinstance(section, list):
-        return factors
-    for i, item in enumerate(section):
-        if not isinstance(item, dict):
-            warnings.append(f"terrain[{i}] is not an object; ignored")
-            continue
-        name = next((item[k] for k in ("type", "name", "terrain", "id") if k in item), None)
-        factor = next((item[k] for k in ("multiplier", "factor", "speed_factor", "cost_multiplier") if k in item), None)
+    for name, item in items:
         try:
-            if name is None or factor is None:
-                raise ValueError("needs a type/name and a multiplier/factor")
-            value = to_number(factor)
-            if value <= 0:
-                raise ValueError("multiplier must be > 0")
+            if name is None:
+                raise ValueError("needs a type/name")
+            if "speed_factor" in item:
+                speed = to_number(item["speed_factor"])
+                if speed <= 0:
+                    raise ValueError("speed_factor must be > 0")
+                value = 1.0 / speed  # slower speed -> higher travel cost
+            else:
+                factor = next((item[k] for k in ("multiplier", "factor", "cost_multiplier") if k in item), None)
+                if factor is None:
+                    raise ValueError("needs a multiplier, factor, cost_multiplier or speed_factor")
+                value = to_number(factor)
+                if value <= 0:
+                    raise ValueError("multiplier must be > 0")
             factors[str(name)] = value
         except ValueError as exc:
-            warnings.append(f"terrain[{i}] ignored: {exc}")
+            warnings.append(f"terrain entry {name!r} ignored: {exc}")
     return factors
 
 
@@ -258,8 +283,9 @@ def _load_hubs(records, pois, graph, warnings, units_cfg):
                 name = str(rec.get("name") or hub_id)
             else:
                 raise ValueError(f"refers to unknown place {ref!r}")
-            normal = int(to_number(rec.get("normal", 0)) * mult)
-            cold = int(to_number(rec.get("cold", 0)) * mult)
+            # A missing or null stock value means 0 of that type.
+            normal = int(to_number(rec.get("normal") if rec.get("normal") is not None else 0) * mult)
+            cold = int(to_number(rec.get("cold") if rec.get("cold") is not None else 0) * mult)
             if normal < 0 or cold < 0:
                 raise ValueError("stock cannot be negative")
         except ValueError as exc:
