@@ -2,11 +2,15 @@
    How data flows:
      1. GET /state            -> `state` (everything to draw)          see refresh()
      2. GET /events (SSE)     -> each event-bus event, live             see connect()
-        every event adds a line to the feed and schedules a refresh
-     3. buttons / forms       -> POST /tick, /run, /disrupt, ...       see act()
+        every event adds a line to the feed and schedules a refresh;
+        a "clock" signal arrives whenever the server's live clock moves
+     3. buttons / forms       -> POST /play, /tick, /disrupt, ...      see act()
+     4. GET /dataset          -> tables for the Dataset explorer       see loadDataset()
+   The SERVER runs the city clock, so every open tab shows the same live city.
    Sections: 1 helpers, 2 app state, 3 refresh + render, 4 header and controls,
    5 KPI cards, 6 map, 7 side lists, 8 details drawer, 9 live feed + toasts,
-   10 add-emergency form, 11 playback + actions, 12 input handling, 13 start. */
+   10 add-emergency form, 11 playback + actions, 12 input handling,
+   13 city events form, 14 dataset explorer, 15 start. */
 "use strict";
 
 // ====================================================================== 1. helpers
@@ -53,6 +57,11 @@ const ICONS = {
   zoomOut: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6"/>',
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  chevron: '<path d="M6 9l6 6 6-6"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
+  node: '<circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>',
 };
 function icon(name, extra = "") {
   return `<svg class="i ${extra}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -93,10 +102,12 @@ async function post(url, body) {
 let state = null;              // last /state reply from the server
 let selection = null;          // what the details drawer shows: {kind, id}
 let activeTab = "queue";
-let playing = false;
-let speed = 1;                 // simulated minutes per real second while playing
-let playTimer = null;
+// (Play/pause and speed live on the SERVER: see state.playing and state.speed.)
 let busy = false;              // a button request is in flight
+let explorerOpen = false;      // Dataset explorer (section 14)
+let explorerData = null;       // last /dataset reply
+let explorerSort = { key: null, dir: 1 };
+let wasFinished = false;
 let feedFilter = "all";
 let feedEvents = [];           // every event received (newest last)
 let lastSeq = 0;               // number of the last event received
@@ -130,7 +141,12 @@ async function refresh() {
     toastAfterSeq = state.last_seq;  // older events are history, not news
     if (firstLoad) fitView();
   }
+  if (state.finished && !wasFinished && !firstLoad) {
+    toast("Scenario finished", "Every request is resolved or failed. Press Reset to run it again.", "k-good", "check");
+  }
+  wasFinished = state.finished;
   render();
+  if (explorerOpen) loadDataset();  // keep the Dataset tables live too
 }
 function render() {
   renderHeader();
@@ -145,9 +161,11 @@ function render() {
 function renderHeader() {
   $("#dataset").textContent = state.dataset;
   $("#clock").textContent = state.clock;
+  const speedText = state.speed === "real" ? "real time" : `1 second = ${state.speed} min`;
   $("#clock-sub").textContent = state.finished ? "Scenario finished"
-    : playing ? `Playing - 1 second = ${speed} min`
-    : `${state.scheduled} scheduled event${state.scheduled === 1 ? "" : "s"} to come`;
+    : state.playing ? `\u25CF Live - ${speedText}`
+    : `Paused - ${state.scheduled} scheduled event${state.scheduled === 1 ? "" : "s"} to come`;
+  $("#clock-sub").classList.toggle("is-live", state.playing);
   const c = state.conditions;
   const pill = $("#conditions-pill");
   pill.className = "pill" + (c.factor > 1.001 ? " slow" : "");
@@ -163,12 +181,12 @@ function renderHeader() {
 function renderControls() {
   const play = $("#play-btn");
   play.innerHTML = state.finished ? `${icon("check")}<span>Finished</span>`
-    : playing ? `${icon("pause")}<span>Pause</span>` : `${icon("play")}<span>Play</span>`;
+    : state.playing ? `${icon("pause")}<span>Pause</span>` : `${icon("play")}<span>Run live</span>`;
   play.disabled = state.finished;
   $("#run-btn").disabled = state.finished;
   $("#reset-btn").disabled = !state.can_reset;
   document.querySelectorAll("#speed button").forEach((b) => {
-    const on = Number(b.dataset.speed) === speed;
+    const on = b.dataset.speed === state.speed;
     b.classList.toggle("active", on);
     b.setAttribute("aria-checked", on);
   });
@@ -295,11 +313,16 @@ function renderMap() {
     return `<polyline class="route under${dim}" stroke="${colour}" points="${d}"/><polyline class="route${dim}" stroke="${colour}" points="${d}"/>`;
   }).join("");
 
-  // Intersections: tiny dots; closed ones get a red ring with a cross.
+  // Intersections: tiny dots (with a bigger invisible circle that is easy to click);
+  // closed ones get a red ring with a cross.
   $("#layer-nodes").innerHTML = state.nodes.map((n) => {
     const [x, y] = positions[n.id];
-    if (!n.closed) return `<circle class="node-dot" cx="${x}" cy="${y}" r="2.6"/>`;
-    return `<g data-tip="${esc(n.name)} - intersection CLOSED"><circle class="node-closed" cx="${x}" cy="${y}" r="9"/>`
+    const attrs = `data-kind="node" data-id="${esc(n.id)}" data-tip="${esc(n.name)} (node ${esc(n.id)})${n.closed ? " - CLOSED" : ""}"`;
+    if (!n.closed) {
+      return `<g ${attrs}><circle class="node-dot${isSelected("node", n.id) ? " selected" : ""}" cx="${x}" cy="${y}" r="${isSelected("node", n.id) ? 6 : 2.6}"/>`
+        + `<circle class="node-hit" cx="${x}" cy="${y}" r="7"/></g>`;
+    }
+    return `<g ${attrs}><circle class="node-closed" cx="${x}" cy="${y}" r="9"/>`
       + `<path d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke="var(--bad)" stroke-width="2.2" stroke-linecap="round"/></g>`;
   }).join("");
 
@@ -495,6 +518,7 @@ function detailFor(sel) {
   if (sel.kind === "hub") { const h = find(state.hubs); return h && hubDetail(h); }
   if (sel.kind === "road") { const r = find(state.edges); return r && roadDetail(r); }
   if (sel.kind === "place") { const p = find(state.places); return p && placeDetail(p); }
+  if (sel.kind === "node") { const n = find(state.nodes); return n && nodeDetail(n); }
   return null;
 }
 const fact = (k, v) => `<div class="fact"><div class="k">${k}</div><div class="v">${v}</div></div>`;
@@ -574,7 +598,8 @@ function hubDetail(h) {
     body: section("Stock", stockLine("Normal", h.normal, h.initial_normal, false) + stockLine("Cold", h.cold, h.initial_cold, true))
       + section("Restock", `<div class="actions">
           <button class="btn small" data-action="disrupt" data-type="restock" data-hub="${esc(h.id)}" data-normal="50" data-cold="0">${icon("plus")}50 normal</button>
-          <button class="btn small" data-action="disrupt" data-type="restock" data-hub="${esc(h.id)}" data-normal="0" data-cold="20">${icon("snow")}20 cold</button></div>`)
+          <button class="btn small" data-action="disrupt" data-type="restock" data-hub="${esc(h.id)}" data-normal="0" data-cold="20">${icon("snow")}20 cold</button>
+          <button class="btn small" data-action="city" data-open="restock" data-target="${esc(h.id)}">${icon("sliders")}Other amounts...</button></div>`)
       + `<div class="actions"><button class="btn small" data-action="locate" data-node="${esc(h.node)}">${icon("target")}Show on map</button></div>`,
   };
 }
@@ -590,6 +615,7 @@ function roadDetail(r) {
           ${r.slow > 1
             ? `<button class="btn small" data-action="disrupt" data-type="traffic" data-edge="${esc(r.id)}" data-factor="1">${icon("check")}Clear traffic</button>`
             : `<button class="btn small" data-action="disrupt" data-type="traffic" data-edge="${esc(r.id)}" data-factor="2.5">${icon("alert")}Traffic jam (x2.5)</button>`}
+          <button class="btn small" data-action="city" data-open="traffic" data-target="${esc(r.id)}">${icon("sliders")}Set traffic level...</button>
         </div><p class="muted" style="font-size:12.5px">Closing a road on a vehicle's route sends that request into Re-Routing; a jam only slows it down.</p>`),
   };
 }
@@ -604,6 +630,22 @@ function placeDetail(p) {
     body: section("Place", `<div class="facts">${fact("Type", esc(nice(p.kind)))}${fact("Address", esc(p.address || "-"))}</div>`)
       + section("Requests here", list)
       + `<div class="actions"><button class="btn small btn-accent" data-action="new-here" data-location="${esc(p.id)}">${icon("plus")}New emergency here</button></div>`,
+  };
+}
+
+function nodeDetail(n) {
+  const roads = state.edges.filter((e) => same(e.a, n.id) || same(e.b, n.id));
+  const list = roads.map((r) => `<div class="row" data-kind="road" data-id="${esc(r.id)}"><div class="veh-icon">${icon("road")}</div>
+      <div class="row-main"><div class="row-title">${esc(r.street || "Road")} <span class="name">edge ${esc(r.id)}</span></div>
+      <div class="row-sub"><span>to ${esc(nodeName(same(r.a, n.id) ? r.b : r.a))}</span><span>${r.minutes} min</span>${r.closed ? '<span class="bad-text">closed</span>' : ""}</div></div><div></div></div>`).join("");
+  return {
+    title: `<div class="drawer-title">${icon("node")} ${esc(n.name)}</div><div class="drawer-sub">Intersection (node ${esc(n.id)}) &middot; ${n.closed ? "Closed" : "Open"}</div>`,
+    body: section("Intersection", `<div class="facts">${fact("Node id", esc(n.id))}${fact("Roads", roads.length)}`
+        + `${fact("Latitude", n.lat ?? "-")}${fact("Longitude", n.lng ?? "-")}</div>`)
+      + section("Roads from here", list || '<div class="muted">No roads.</div>')
+      + section("Actions", `<div class="actions">
+          <button class="btn small${n.closed ? "" : " btn-danger"}" data-action="disrupt" data-type="${n.closed ? "node_reopen" : "node_closure"}" data-node="${esc(n.id)}">${icon(n.closed ? "check" : "x")}${n.closed ? "Reopen intersection" : "Close intersection"}</button>
+          <button class="btn small btn-accent" data-action="new-here" data-location="${esc(n.id)}">${icon("plus")}New emergency here</button></div>`),
   };
 }
 
@@ -670,7 +712,7 @@ function flushToasts() {
   toastTimer = null;
   const batch = pendingToasts;
   pendingToasts = [];
-  if (batch.length > 4) {
+  if (batch.length > 3) {
     showToast({ title: `${batch.length} updates`, text: "See Live activity for the details.", kind: "k-request", iconName: "activity" });
   } else {
     batch.forEach(showToast);
@@ -683,8 +725,8 @@ function showToast(t) {
   el.innerHTML = `${icon(t.iconName)}<div><b>${esc(t.title)}</b>${esc(t.text || "")}</div>`;
   el.addEventListener("click", () => { if (t.onClick) t.onClick(); el.remove(); });
   box.appendChild(el);
-  while (box.children.length > 4) box.firstElementChild.remove();
-  setTimeout(() => { el.classList.add("leaving"); setTimeout(() => el.remove(), 300); }, 5000);
+  while (box.children.length > 3) box.firstElementChild.remove();  // never more than 3 on screen
+  setTimeout(() => { el.classList.add("leaving"); setTimeout(() => el.remove(), 300); }, 4000);
 }
 /** Only genuinely important, NEW events pop up. */
 function maybeToast(ev) {
@@ -714,6 +756,7 @@ function connect() {
     maybeToast(ev);
     queueRefresh();
   });
+  source.addEventListener("clock", () => queueRefresh());  // the live clock moved
   source.addEventListener("reset", () => {  // the scenario was restarted
     feedEvents = [];
     lastSeq = 0;
@@ -798,37 +841,20 @@ async function act(url, body) {
     busy = false;
   }
 }
-function setPlaying(on) {
-  playing = Boolean(on) && state && !state.finished;
-  clearTimeout(playTimer);
-  if (playing) playLoop();
-  renderControls();
-  renderHeader();
-}
-/** While playing: advance `speed` simulated minutes about once per second. */
-async function playLoop() {
-  if (!playing) return;
-  const started = performance.now();
-  await act(`/tick?minutes=${speed}`);
-  if (state.finished) {
-    playing = false;
-    renderControls();
-    renderHeader();
-    toast("Scenario finished", "Every request is resolved or failed. Press Reset to run it again.", "k-good", "check");
-    return;
-  }
-  if (playing) playTimer = setTimeout(playLoop, Math.max(50, 1000 - (performance.now() - started)));
-}
+/** Start or stop the SERVER's live clock (every open tab follows it). */
+const setPlaying = (on) => act(`/play?on=${on ? 1 : 0}`);
+const setSpeed = (key) => act(`/play?speed=${encodeURIComponent(key)}`);
 /** Buttons inside the drawer and lists carry data-action attributes. */
 function handleAction(el) {
   const d = el.dataset;
   if (d.action === "select") select({ kind: d.kind, id: d.id });
   else if (d.action === "locate") focusNode(state.nodes.find((n) => same(n.id, d.node)).id);
   else if (d.action === "new-here") openModal(d.location);
+  else if (d.action === "city") openCity(d.open, d.target);
   else if (d.action === "road") act(`/road?edge=${encodeURIComponent(d.edge)}`);
   else if (d.action === "disrupt") {
     const body = { type: d.type };
-    ["vehicle", "hub", "edge", "normal", "cold", "factor"].forEach((key) => { if (d[key] !== undefined) body[key] = d[key]; });
+    ["vehicle", "hub", "edge", "node", "normal", "cold", "factor"].forEach((key) => { if (d[key] !== undefined) body[key] = d[key]; });
     act("/disrupt", body);
   }
 }
@@ -928,16 +954,30 @@ function initControls() {
   $("#feed-filters").innerHTML = Object.keys(FEED_GROUPS).map((g) =>
     `<button class="chip-toggle${g === feedFilter ? " on" : ""}" data-filter="${g}">${g[0].toUpperCase() + g.slice(1)}</button>`).join("");
 
-  $("#play-btn").addEventListener("click", () => setPlaying(!playing));
+  $("#dataset-btn").innerHTML = `${icon("database")}<span>Dataset</span>`;
+  $("#events-btn").innerHTML = `${icon("sliders")}<span>City events</span>${icon("chevron")}`;
+  $("#city-close").innerHTML = icon("x");
+  $("#explorer-close").innerHTML = icon("x");
+  $("#explorer-csv").innerHTML = `${icon("download")}<span>CSV</span>`;
+  const MENU = { restock: ["box", "Restock a food hub"], traffic: ["alert", "Traffic on a road"],
+                 weather: ["cloud", "Change the weather"], road: ["road", "Close or reopen a road"],
+                 node: ["node", "Close or reopen an intersection"], vehicle: ["truck", "Vehicle breakdown or repair"] };
+  document.querySelectorAll("#events-menu [data-open]").forEach((b) => {
+    const [ic, label] = MENU[b.dataset.open];
+    b.innerHTML = `${icon(ic)}<span>${label}</span>`;
+  });
+  initCityForm();
+  initExplorer();
+  $("#play-btn").addEventListener("click", () => setPlaying(!state.playing));
   $("#step-1").addEventListener("click", () => act("/tick?minutes=1"));
   $("#step-10").addEventListener("click", () => act("/tick?minutes=10"));
-  $("#run-btn").addEventListener("click", () => { setPlaying(false); act("/run"); });
+  $("#run-btn").addEventListener("click", () => act("/run"));  // the server pauses the live clock first
   $("#reset-btn").addEventListener("click", () => {
-    if (window.confirm("Restart the scenario from the beginning?")) { setPlaying(false); selection = null; act("/reset"); }
+    if (window.confirm("Restart the scenario from the beginning?")) { selection = null; act("/reset"); }
   });
   $("#speed").addEventListener("click", (e) => {
     const b = e.target.closest("button");
-    if (b) { speed = Number(b.dataset.speed); renderControls(); renderHeader(); }
+    if (b) setSpeed(b.dataset.speed);
   });
   $("#weather-select").addEventListener("change", (e) => act("/disrupt", { type: "weather", condition: e.target.value }));
   $("#add-btn").addEventListener("click", () => openModal());
@@ -961,8 +1001,12 @@ function initControls() {
   document.addEventListener("click", (e) => {
     const actionEl = e.target.closest("[data-action]");
     if (actionEl) { e.preventDefault(); handleAction(actionEl); return; }
-    const row = e.target.closest(".tab-body [data-kind], .drawer-body [data-kind]");
-    if (row) select({ kind: row.dataset.kind, id: row.dataset.id });
+    const row = e.target.closest(".tab-body [data-kind], .drawer-body [data-kind], .explorer-body [data-kind]");
+    if (row) {
+      select({ kind: row.dataset.kind, id: row.dataset.id });
+      if (row.closest(".explorer-body")) focusSelection();
+    }
+    if (!e.target.closest(".menu-wrap")) toggleMenu(false);  // click outside closes the menu
   });
   $("#drawer-close").addEventListener("click", () => select(null));
   $("#add-form").addEventListener("submit", submitModal);
@@ -974,10 +1018,19 @@ function initControls() {
     if (b) setSeverity(Number(b.dataset.sev));
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { if (!$("#modal").hidden) closeModal(); else select(null); return; }
-    const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName) || !$("#modal").hidden;
+    if (e.key === "Escape") {
+      if (!$("#modal").hidden) closeModal();
+      else if (!$("#city-modal").hidden) closeCity();
+      else if (!$("#events-menu").hidden) toggleMenu(false);
+      else if (selection) select(null);
+      else if (explorerOpen) toggleExplorer(false);
+      return;
+    }
+    const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)
+      || !$("#modal").hidden || !$("#city-modal").hidden;
     if (typing || !state) return;
-    if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+    if (e.key === " ") { e.preventDefault(); setPlaying(!state.playing); }
+    else if (e.key === "d" || e.key === "D") toggleExplorer(!explorerOpen);
     else if (e.key === ".") act("/tick?minutes=1");
     else if (e.key === "n" || e.key === "N") { e.preventDefault(); openModal(); }
     else if (e.key === "+" || e.key === "=") zoomCenter(1 / 1.25);
@@ -991,7 +1044,266 @@ function toggleUi(key, button) {
   renderMap();
 }
 
-// ====================================================================== 13. start
+// ====================================================================== 13. city events form
+// One form for every kind of change to the city. It sends exactly what a
+// disruptions.json file would contain, so it goes through the same checks.
+let cityType = "restock";
+function toggleMenu(open) {
+  $("#events-menu").hidden = !open;
+  $("#events-btn").setAttribute("aria-expanded", open);
+}
+function roadLabel(e) {
+  return `${e.id} · ${e.street || "Road"}: ${nodeName(e.a)} → ${nodeName(e.b)}${e.closed ? " (closed)" : e.slow > 1 ? ` (traffic x${e.slow})` : ""}`;
+}
+/** Fields for each kind of change. `target` pre-selects a hub / road / node / vehicle. */
+function cityFieldsHtml(type, target) {
+  const pick = (id) => (target !== undefined && same(id, target) ? " selected" : "");
+  if (type === "restock") {
+    return `<label class="field span-2"><span>Food hub</span><select name="hub">${state.hubs.map((h) =>
+        `<option value="${esc(h.id)}"${pick(h.id)}>${esc(h.id)} · ${esc(h.name)} (now ${h.normal} normal / ${h.cold} cold)</option>`).join("")}</select></label>
+      <label class="field"><span>Normal food to add</span><input type="number" name="normal" min="0" value="100"></label>
+      <label class="field"><span>Cold food to add</span><input type="number" name="cold" min="0" value="0"></label>`;
+  }
+  if (type === "traffic") {
+    const edge = state.edges.find((e) => same(e.id, target));
+    return `<label class="field span-2"><span>Road</span><select name="edge">${state.edges.map((e) =>
+        `<option value="${esc(e.id)}"${pick(e.id)}>${esc(roadLabel(e))}</option>`).join("")}</select></label>
+      <label class="field span-2"><span>Traffic level: how many times slower than normal (1 = clear)</span>
+        <div class="range-row"><input type="range" name="factor" min="1" max="5" step="0.5" value="${edge && edge.slow > 1 ? edge.slow : 2.5}">
+        <output id="factor-out"></output></div></label>`;
+  }
+  if (type === "weather") {
+    return `<label class="field span-2"><span>Weather now <span class="now">(currently ${esc(nice(state.conditions.weather))})</span></span>
+      <select name="condition">${state.options.weather.map((w) =>
+        `<option value="${esc(w)}"${w === state.conditions.weather ? " selected" : ""}>${esc(nice(w))}</option>`).join("")}</select>
+      <small>Every road becomes slower by the factor set for this weather in the config.</small></label>`;
+  }
+  const choice = (name, a, b, firstOn) => `<div class="field span-2"><span>Action</span><div class="choice">
+      <label><input type="radio" name="${name}" value="${a[0]}"${firstOn ? " checked" : ""}>${a[1]}</label>
+      <label><input type="radio" name="${name}" value="${b[0]}"${firstOn ? "" : " checked"}>${b[1]}</label></div></div>`;
+  if (type === "road") {
+    const edge = state.edges.find((e) => same(e.id, target));
+    return `<label class="field span-2"><span>Road</span><select name="edge">${state.edges.map((e) =>
+        `<option value="${esc(e.id)}"${pick(e.id)}>${esc(roadLabel(e))}</option>`).join("")}</select></label>`
+      + choice("action", ["road_closure", "Close it"], ["road_reopen", "Reopen it"], !(edge && edge.closed));
+  }
+  if (type === "node") {
+    const node = state.nodes.find((n) => same(n.id, target));
+    return `<label class="field span-2"><span>Intersection</span><select name="node">${state.nodes.map((n) =>
+        `<option value="${esc(n.id)}"${pick(n.id)}>${esc(n.id)} · ${esc(n.name)}${n.closed ? " (closed)" : ""}</option>`).join("")}</select></label>`
+      + choice("action", ["node_closure", "Close it"], ["node_reopen", "Reopen it"], !(node && node.closed));
+  }
+  if (type === "vehicle") {
+    const v = state.vehicles.find((x) => same(x.id, target));
+    return `<label class="field span-2"><span>Vehicle</span><select name="vehicle">${state.vehicles.map((x) =>
+        `<option value="${esc(x.id)}"${pick(x.id)}>${esc(x.id)} · ${esc(x.name)} (${esc(x.status)})</option>`).join("")}</select></label>`
+      + choice("action", ["vehicle_breakdown", "Breaks down"], ["vehicle_repair", "Repaired"], !(v && v.status === "broken"));
+  }
+  return "";
+}
+function renderCityFields(target) {
+  $("#city-fields").innerHTML = cityFieldsHtml(cityType, target);
+  const range = $("#city-fields input[type=range]");
+  if (range) {
+    const out = $("#factor-out");
+    const show = () => { out.textContent = Number(range.value) === 1 ? "clear" : `x${range.value}`; };
+    range.addEventListener("input", show);
+    show();
+  }
+}
+function openCity(type = "restock", target) {
+  toggleMenu(false);
+  cityType = type;
+  $("#city-type").value = type;
+  renderCityFields(target);
+  $("#city-form").reason.value = "";
+  $("#city-messages").innerHTML = "";
+  $("#city-modal").hidden = false;
+  const first = $("#city-fields select, #city-fields input");
+  if (first) first.focus();
+}
+function closeCity() { $("#city-modal").hidden = true; }
+/** Turn the form into a disruption, exactly like one line of disruptions.json. */
+function cityBody(form) {
+  const value = (name) => (form.querySelector(`[name="${name}"]`) || {}).value;
+  const action = (form.querySelector('input[name="action"]:checked') || {}).value;
+  const reason = form.reason.value.trim();
+  const body = {
+    restock: { type: "restock", hub: value("hub"), normal: value("normal") || 0, cold: value("cold") || 0 },
+    traffic: { type: "traffic", edge: value("edge"), factor: value("factor") },
+    weather: { type: "weather", condition: value("condition") },
+    road: { type: action, edge: value("edge") },
+    node: { type: action, node: value("node") },
+    vehicle: { type: action, vehicle: value("vehicle") },
+  }[cityType];
+  if (reason) body.reason = reason;
+  return body;
+}
+function initCityForm() {
+  $("#events-btn").addEventListener("click", () => toggleMenu($("#events-menu").hidden));
+  $("#events-menu").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-open]");
+    if (b) openCity(b.dataset.open);
+  });
+  $("#city-type").addEventListener("change", (e) => { cityType = e.target.value; renderCityFields(); });
+  $("#city-close").addEventListener("click", closeCity);
+  $("#city-cancel").addEventListener("click", closeCity);
+  $("#city-modal").addEventListener("click", (e) => { if (e.target.id === "city-modal") closeCity(); });
+  $("#city-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("#city-submit").disabled = true;
+    try {
+      const reply = await post("/disrupt", cityBody(e.target));
+      if (!reply.ok) {
+        $("#city-messages").innerHTML = `<div class="callout bad">${icon("alert")}<span>${esc(reply.message)}</span></div>`;
+        return;
+      }
+      closeCity();
+      toast("City updated", reply.message, "k-good", "check");
+      await refresh();
+    } finally {
+      $("#city-submit").disabled = false;
+    }
+  });
+}
+
+// ====================================================================== 14. dataset explorer
+// Every table of the loaded dataset, searchable and sortable. Rows are live:
+// stock, closures, vehicle positions and travel times update as the city runs.
+const yesNo = (v) => (v ? "yes" : "no");
+const coord = (v) => (v === null || v === undefined ? "-" : Number(v).toFixed(5));
+const statusCell = (closed, slow) => (closed ? '<span class="bad-text">closed</span>'
+  : slow > 1 ? `<span class="warn-text">traffic x${slow}</span>` : '<span class="ok-text">open</span>');
+// For each table: the map selection a row opens, and its columns [header, value(row), html(row)?, mono?].
+const TABLES = {
+  places: { kind: (r) => (r.hub ? "hub" : "place"), cols: [
+    ["ID", (r) => r.id, null, true], ["Name", (r) => r.name], ["Kind", (r) => r.kind], ["Node", (r) => r.node, null, true],
+    ["Lat", (r) => coord(r.lat), null, true], ["Lng", (r) => coord(r.lng), null, true], ["Address", (r) => r.address],
+    ["Requests here", (r) => r.requests]] },
+  hubs: { kind: () => "hub", cols: [
+    ["ID", (r) => r.id, null, true], ["Name", (r) => r.name], ["Node", (r) => r.node, null, true],
+    ["Lat", (r) => coord(r.lat), null, true], ["Lng", (r) => coord(r.lng), null, true],
+    ["Normal", (r) => r.normal], ["Cold", (r) => r.cold], ["Normal at start", (r) => r.initial_normal], ["Cold at start", (r) => r.initial_cold]] },
+  vehicles: { kind: () => "vehicle", cols: [
+    ["ID", (r) => r.id, null, true], ["Name", (r) => r.name], ["Refrigerated", (r) => yesNo(r.refrigerated)],
+    ["Capacity", (r) => r.capacity], ["Fuel", (r) => `${r.fuel} / ${r.max_fuel}`], ["Status", (r) => r.status],
+    ["Home node", (r) => r.home, null, true], ["At node", (r) => r.location, null, true], ["Trip", (r) => r.trip || "-", null, true]] },
+  nodes: { kind: () => "node", cols: [
+    ["ID", (r) => r.id, null, true], ["Name", (r) => r.name], ["Lat", (r) => coord(r.lat), null, true],
+    ["Lng", (r) => coord(r.lng), null, true], ["Roads", (r) => r.roads],
+    ["Status", (r) => (r.closed ? "closed" : "open"), (r) => statusCell(r.closed, 1)]] },
+  edges: { kind: () => "road", cols: [
+    ["ID", (r) => r.id, null, true], ["Street", (r) => r.street], ["From (a)", (r) => `${r.a} · ${r.a_name}`],
+    ["To (b)", (r) => `${r.b} · ${r.b_name}`], ["km", (r) => r.km, null, true], ["w (min)", (r) => r.w, null, true],
+    ["Now (min)", (r) => r.minutes, null, true], ["Highway", (r) => yesNo(r.hwy)], ["Terrain", (r) => r.terrain || "-"],
+    ["Status", (r) => (r.closed ? "closed" : r.slow > 1 ? `traffic x${r.slow}` : "open"), (r) => statusCell(r.closed, r.slow)]] },
+};
+async function loadDataset() {
+  explorerData = await getJSON("/dataset");
+  renderExplorer();
+}
+function toggleExplorer(open) {
+  explorerOpen = open;
+  $("#explorer").classList.toggle("open", open);
+  $("#explorer").setAttribute("aria-hidden", String(!open));
+  if (open) loadDataset();
+}
+function tableRows(name) {
+  const table = TABLES[name];
+  const query = $("#explorer-search").value.trim().toLowerCase();
+  let rows = explorerData[name];
+  if (query) rows = rows.filter((r) => table.cols.some(([, value]) => String(value(r)).toLowerCase().includes(query)));
+  if (explorerSort.key !== null) {
+    const value = table.cols[explorerSort.key][1];
+    const num = (x) => (x !== "" && !Number.isNaN(Number(x)) ? Number(x) : null);
+    rows = [...rows].sort((a, b) => {
+      const x = value(a), y = value(b);
+      const nx = num(x), ny = num(y);
+      const order = nx !== null && ny !== null ? nx - ny : String(x).localeCompare(String(y), undefined, { numeric: true });
+      return order * explorerSort.dir;
+    });
+  }
+  return rows;
+}
+function renderExplorer() {
+  if (!explorerData) return;
+  const name = $("#explorer-table").value;
+  const meta = explorerData.meta;
+  $("#explorer-sub").textContent = `${meta.name} (${meta.id})`;
+  $("#explorer-search").disabled = name === "overview";
+  $("#explorer-csv").disabled = name === "overview";
+  const body = $("#explorer-body");
+  if (name === "overview") {
+    const c = meta.counts;
+    const counts = [["Intersections", c.intersections], ["Roads", c.roads], ["Places", c.places],
+                    ["Food hubs", c.hubs], ["Vehicles", c.vehicles], ["Emergencies", state.emergencies.length]];
+    const factors = Object.entries(meta.weather_factors).map(([k, v]) => `${nice(k)} x${v}`).join(", ");
+    const rush = meta.rush_hours.length ? meta.rush_hours.map((r) => `${r.start}-${r.end} x${r.factor}`).join(", ") : "none configured";
+    body.innerHTML = `<div class="overview-grid">${counts.map(([k, v]) => fact(k, v)).join("")}</div>
+      <dl class="kv">
+        <dt>Dataset id</dt><dd>${esc(meta.id)}</dd>
+        <dt>Map centre</dt><dd>${meta.center ? meta.center.map(coord).join(", ") : "-"}</dd>
+        <dt>Sources</dt><dd>${meta.sources.map((src) => esc(src)).join("<br>") || "-"}</dd>
+        <dt>Disclosure</dt><dd>${esc(meta.disclosure || "-")}</dd>
+        <dt>Weather factors</dt><dd>${esc(factors)}</dd>
+        <dt>Rush hours</dt><dd>${esc(rush)}</dd>
+        <dt>Loader warnings</dt><dd>${meta.warnings.length ? meta.warnings.map((w) => esc(w)).join("<br>") : "none: every record loaded"}</dd>
+      </dl>
+      <p class="table-note">Pick a table above to see every record with its ids and coordinates. Click a row to show it on the map.</p>`;
+    return;
+  }
+  const table = TABLES[name];
+  const rows = tableRows(name);
+  const head = table.cols.map(([title], i) =>
+    `<th data-col="${i}">${esc(title)}${explorerSort.key === i ? ` <span class="arrow">${explorerSort.dir > 0 ? "▲" : "▼"}</span>` : ""}</th>`).join("");
+  const kindOf = table.kind;
+  const lines = rows.map((r) => `<tr data-kind="${kindOf(r)}" data-id="${esc(r.id)}"${isSelected(kindOf(r), r.id) ? ' class="selected"' : ""}>${table.cols.map(([, value, html, mono]) =>
+    `<td${mono ? ' class="mono"' : ""}>${html ? html(r) : esc(value(r))}</td>`).join("")}</tr>`).join("");
+  body.innerHTML = `<p class="table-note">${rows.length} of ${explorerData[name].length} rows. Click a header to sort, a row to show it on the map.</p>
+    <table class="data-table"><thead><tr>${head}</tr></thead><tbody>${lines}</tbody></table>`;
+}
+/** Download the table currently shown (after search and sort) as a CSV file. */
+function downloadCsv() {
+  const name = $("#explorer-table").value;
+  if (!explorerData || name === "overview") return;
+  const table = TABLES[name];
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [table.cols.map(([title]) => cell(title)).join(",")]
+    .concat(tableRows(name).map((r) => table.cols.map(([, value]) => cell(value(r))).join(",")));
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  link.download = `${explorerData.meta.id}-${name}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+/** After choosing a row in the explorer, zoom the map to it. */
+function focusSelection() {
+  if (!selection) return;
+  const find = (list) => list.find((x) => same(x.id, selection.id));
+  let nodeId = null;
+  if (selection.kind === "node") nodeId = selection.id;
+  else if (selection.kind === "hub") nodeId = (find(state.hubs) || {}).node;
+  else if (selection.kind === "place") nodeId = (find(state.places) || {}).node;
+  else if (selection.kind === "vehicle") nodeId = (find(state.vehicles) || {}).from;
+  else if (selection.kind === "road") nodeId = (find(state.edges) || {}).a;
+  if (nodeId !== null && nodeId !== undefined && positions[nodeId]) focusNode(nodeId);
+}
+function initExplorer() {
+  $("#dataset-btn").addEventListener("click", () => toggleExplorer(!explorerOpen));
+  $("#explorer-close").addEventListener("click", () => toggleExplorer(false));
+  $("#explorer-table").addEventListener("change", () => { explorerSort = { key: null, dir: 1 }; $("#explorer-search").value = ""; renderExplorer(); });
+  $("#explorer-search").addEventListener("input", renderExplorer);
+  $("#explorer-csv").addEventListener("click", downloadCsv);
+  $("#explorer-body").addEventListener("click", (e) => {
+    const th = e.target.closest("th[data-col]");
+    if (!th) return;
+    const col = Number(th.dataset.col);
+    explorerSort = { key: col, dir: explorerSort.key === col ? -explorerSort.dir : 1 };
+    renderExplorer();
+  });
+}
+
+// ====================================================================== 15. start
 initTheme();
 initControls();
 initMapInput();

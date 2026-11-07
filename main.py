@@ -53,6 +53,8 @@ def build_parser():
     p.add_argument("--web", action="store_true",
                    help="live web dashboard (map, queue, events) instead of the text CLI")
     p.add_argument("--port", type=int, default=8765, help="port for --web (default 8765)")
+    p.add_argument("--paused", action="store_true",
+                   help="--web: start with the clock paused (default: the city runs live)")
     p.add_argument("--weather", metavar="FILE", help="replay a saved weather snapshot (see --fetch-weather)")
     p.add_argument("--fetch-weather", metavar="YYYY-MM-DD",
                    help="download that day's real hourly weather for the dataset's city from Open-Meteo "
@@ -159,7 +161,7 @@ def main(argv=None):
 
     if args.web:
         try:
-            Dashboard(system, sim, make_world=make_world).serve(port=args.port)
+            Dashboard(system, sim, make_world=make_world).serve(port=args.port, autoplay=not args.paused)
         except OSError as exc:  # e.g. the port is already in use
             print(f"ERROR: cannot start the dashboard on port {args.port}: {exc}", file=sys.stderr)
             return 2

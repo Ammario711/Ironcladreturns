@@ -46,7 +46,7 @@ python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 129 automated tests, a few seconds (no internet needed)
+python3 -m unittest discover -s tests -v   # 141 automated tests, about 10 seconds (no internet needed)
 ```
 
 ### Dataset 2 (zero code changes)
@@ -61,9 +61,17 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 
 ### Live web dashboard
 Run `python3 main.py --demo --web` and open http://localhost:8765. It works with any dataset, needs no internet, and uses only the standard library on the server and plain HTML/CSS/JavaScript in the browser (`ui/static/`).
-- **Controls:** Play/Pause at 1x, 5x or 15x speed (Space), step +1 or +10 minutes, run to the end, and Reset to start the same scenario again.
+- **Live city:** the server runs the city clock itself and starts immediately (add `--paused` to start paused).
+  - Every open browser tab shows the same city and updates by itself, every second.
+  - Anything one person changes appears in all tabs straight away.
+- **Controls:** Run live / Pause (Space), speed **Real time** (1 simulated minute per real minute), 1x, 5x or 15x, step +1 or +10 minutes, run to the end, and Reset to start the same scenario again.
+- **City events menu:** restock a food hub with any amounts, set traffic on any road (×1 to ×5, 1 = clear), change the weather, close or reopen a road or an intersection, and break down or repair a vehicle. It uses the same checks as a disruptions file.
+- **Dataset menu (D):** every place (POI), food hub, vehicle, intersection (node) and road (edge), with all their ids, lat/lng, km, `w`, current travel time, highway/terrain and live status.
+  - Tables are searchable and sortable, and can be downloaded as CSV.
+  - Clicking a row shows it on the map.
+  - The Overview shows the dataset's sources, disclosure, loader warnings and the weather and rush-hour settings.
 - **Map:** zoom with the scroll wheel and drag to pan. It shows trucks moving along their remaining routes, request pins coloured by state (pulsing when Delayed, Re-Routing or Failed), hubs with live stock, closed roads in red, jams in orange, and a weather effect.
-- **Details panel:** click any request, truck, hub, road or place.
+- **Details panel:** click any request, truck, hub, road, intersection or place.
   - A request shows the full timestamped timeline, the lifecycle stepper, *why it has this priority* (all six score factors plus waiting time), and its vehicles.
   - Trucks, hubs and roads have action buttons: breakdown/repair, restock, close/reopen, traffic jam.
 - **New emergency form (N):** checked by the same validation as files and the CLI. Errors appear next to the form, including "did you mean" for unknown places.

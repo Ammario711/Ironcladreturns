@@ -27,16 +27,18 @@
   </div>
 
   <div class="top-right">
+    <button class="btn btn-ghost small" id="dataset-btn" data-tip="Every place, hub, vehicle, intersection and road in the dataset"></button>
     <div class="pill" id="conditions-pill" data-tip="Weather and rush hour slow every road by this factor"></div>
-    <div class="live" id="live" role="status"><span class="dot"></span><span class="live-text">Connecting</span></div>
+    <div class="live" id="live" role="status" data-tip="Live connection to the server"><span class="dot"></span><span class="live-text">Connecting</span></div>
     <button class="icon-btn" id="theme-btn" aria-label="Switch light or dark mode" data-tip="Light / dark mode"></button>
   </div>
 </header>
 
 <nav class="controls" aria-label="Simulation controls">
   <div class="control-group">
-    <button class="btn btn-primary" id="play-btn" data-tip="Play or pause (Space)"></button>
-    <div class="segmented" id="speed" role="radiogroup" aria-label="Playback speed">
+    <button class="btn btn-primary" id="play-btn" data-tip="Run or pause the live city clock (Space)"></button>
+    <div class="segmented" id="speed" role="radiogroup" aria-label="Clock speed">
+      <button type="button" data-speed="real" role="radio" data-tip="Real time: 1 simulated minute per real minute">Real time</button>
       <button type="button" data-speed="1" role="radio" data-tip="1 simulated minute per second">1&times;</button>
       <button type="button" data-speed="5" role="radio" data-tip="5 simulated minutes per second">5&times;</button>
       <button type="button" data-speed="15" role="radio" data-tip="15 simulated minutes per second">15&times;</button>
@@ -47,6 +49,17 @@
     <button class="btn btn-ghost" id="reset-btn" data-tip="Start the scenario again"></button>
   </div>
   <div class="control-group">
+    <div class="menu-wrap">
+      <button class="btn" id="events-btn" aria-haspopup="menu" aria-expanded="false" data-tip="Restock, traffic, weather, closures, breakdowns"></button>
+      <div class="menu" id="events-menu" role="menu" hidden>
+        <button type="button" role="menuitem" data-open="restock"></button>
+        <button type="button" role="menuitem" data-open="traffic"></button>
+        <button type="button" role="menuitem" data-open="weather"></button>
+        <button type="button" role="menuitem" data-open="road"></button>
+        <button type="button" role="menuitem" data-open="node"></button>
+        <button type="button" role="menuitem" data-open="vehicle"></button>
+      </div>
+    </div>
     <label class="select-wrap" data-tip="Change the weather: every road gets slower">
       <span id="weather-icon" aria-hidden="true"></span>
       <select id="weather-select" aria-label="Weather"></select>
@@ -173,6 +186,64 @@
     </div>
   </form>
 </div>
+
+<div class="modal-backdrop" id="city-modal" hidden>
+  <form class="modal" id="city-form" role="dialog" aria-modal="true" aria-labelledby="city-title" novalidate>
+    <div class="modal-head">
+      <div>
+        <h2 id="city-title">Change the city</h2>
+        <p class="muted">Same checks as a disruptions file. Every open dashboard updates at once.</p>
+      </div>
+      <button type="button" class="icon-btn" id="city-close" aria-label="Close"></button>
+    </div>
+    <div class="form-grid">
+      <label class="field span-2">
+        <span>What happens</span>
+        <select id="city-type">
+          <option value="restock">Restock a food hub</option>
+          <option value="traffic">Traffic on a road</option>
+          <option value="weather">Change the weather</option>
+          <option value="road">Close or reopen a road</option>
+          <option value="node">Close or reopen an intersection</option>
+          <option value="vehicle">Vehicle breakdown or repair</option>
+        </select>
+      </label>
+      <div class="form-grid span-2" id="city-fields"></div>
+      <label class="field span-2">
+        <span>Reason (optional, shown in the activity log)</span>
+        <input name="reason" maxlength="120" placeholder="e.g. water main break on King St">
+      </label>
+    </div>
+    <div class="form-messages" id="city-messages" aria-live="polite"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="city-cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="city-submit">Apply</button>
+    </div>
+  </form>
+</div>
+
+<aside class="explorer" id="explorer" aria-hidden="true" aria-labelledby="explorer-title">
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-title" id="explorer-title">Dataset</div>
+      <div class="drawer-sub" id="explorer-sub"></div>
+    </div>
+    <button class="icon-btn" id="explorer-close" aria-label="Close dataset"></button>
+  </div>
+  <div class="explorer-tools">
+    <select id="explorer-table" aria-label="What to show">
+      <option value="overview">Overview</option>
+      <option value="places">Places (POIs)</option>
+      <option value="hubs">Food hubs</option>
+      <option value="vehicles">Vehicles</option>
+      <option value="nodes">Intersections (nodes)</option>
+      <option value="edges">Roads (edges)</option>
+    </select>
+    <input type="search" id="explorer-search" placeholder="Search any column" aria-label="Search">
+    <button class="btn small" id="explorer-csv" data-tip="Download this table as a CSV file"></button>
+  </div>
+  <div class="explorer-body" id="explorer-body"></div>
+</aside>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div class="tooltip" id="tooltip" role="tooltip"></div>

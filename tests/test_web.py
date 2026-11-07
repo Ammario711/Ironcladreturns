@@ -3,6 +3,7 @@
 import http.client
 import json
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -26,12 +27,14 @@ def sample_world():
 
 class WebDashboardTests(unittest.TestCase):
     def setUp(self):
-        self.dashboard = Dashboard(*sample_world(), make_world=sample_world)
+        # tick_seconds=0.05: the live clock moves 20 times a second, so tests stay fast
+        self.dashboard = Dashboard(*sample_world(), make_world=sample_world, tick_seconds=0.05)
         self.server = self.dashboard.make_server(port=0)  # 0 = any free port
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.base = f"http://127.0.0.1:{self.server.server_port}"
 
     def tearDown(self):
+        self.dashboard.stop()
         self.server.shutdown()
         self.server.server_close()
 
@@ -138,7 +141,68 @@ class WebDashboardTests(unittest.TestCase):
         self.dashboard.make_world = None
         self.assertEqual(self.post("/reset")[0], 400)
 
+    # ------------------------------------------------------------ live clock
+    def test_live_clock_runs_on_its_own_and_pauses(self):
+        self.assertFalse(self.state()["playing"])
+        code, reply = self.post("/play?on=1&speed=5")
+        self.assertEqual(code, 200)
+        time.sleep(0.6)  # ~12 ticks x 5 simulated minutes x 0.05 s
+        running = self.state()
+        self.assertTrue(running["playing"])
+        self.assertEqual(running["speed"], "5")
+        self.assertGreater(running["now"], 480)  # moved without any /tick call
+        self.post("/play?on=0")
+        stopped_at = self.state()["now"]
+        time.sleep(0.3)
+        self.assertEqual(self.state()["now"], stopped_at)
+
+    def test_play_input_checks(self):
+        self.assertEqual(self.post("/play?speed=99")[0], 400)
+        self.assertEqual(self.post("/play?speed=real")[0], 200)
+        self.assertEqual(self.state()["speed"], "real")
+        self.post("/play?on=1")
+        self.post("/run")  # Run to end pauses the live clock first
+        self.assertFalse(self.state()["playing"])
+        self.assertEqual(self.post("/play?on=1")[0], 400)  # finished: Reset first
+
+    # ------------------------------------------------------------ dataset explorer
+    def test_dataset_endpoint_lists_every_record_live(self):
+        data = json.loads(self.get("/dataset")[0])
+        self.assertEqual(data["meta"]["counts"], {"intersections": 48, "roads": 82, "places": 7, "hubs": 3, "vehicles": 12})
+        node = next(n for n in data["nodes"] if n["id"] == 33)
+        self.assertEqual((node["lat"], node["lng"], node["roads"]), (43.65965, -79.40140000000001, 4))
+        edge = next(e for e in data["edges"] if e["id"] == 0)
+        self.assertEqual((edge["a"], edge["b"], edge["street"], edge["w"]), (0, 1, "Front St", 2.4136))
+        self.assertEqual(edge["a_name"], "Bathurst St & Front St")
+        self.assertEqual(next(h for h in data["hubs"] if h["id"] == "P0")["lat"], 43.65965)
+        self.assertTrue(any(p["hub"] for p in data["places"]))
+        self.assertEqual(len(data["vehicles"]), 12)
+        self.post("/road?edge=0")
+        self.post("/disrupt", {"type": "restock", "hub": "P0", "normal": 10})
+        data = json.loads(self.get("/dataset")[0])
+        self.assertTrue(next(e for e in data["edges"] if e["id"] == 0)["closed"])
+        self.assertEqual(next(h for h in data["hubs"] if h["id"] == "P0")["normal"], 310)
+
+    def test_intersection_closure_from_the_page(self):
+        code, _reply = self.post("/disrupt", {"type": "node_closure", "node": "20"})
+        self.assertEqual(code, 200)
+        self.assertIn(20, self.system.graph.closed_nodes)
+
     # ------------------------------------------------------------ live stream
+    def test_stream_sends_a_clock_signal_when_time_moves(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            conn.request("GET", f"/events?since={len(self.system.bus.log)}")
+            reply = conn.getresponse()
+            self.post("/tick?minutes=1")
+            seen = b""
+            while b"event: clock" not in seen:
+                line = reply.fp.readline()
+                self.assertTrue(line, "stream closed before the clock signal")
+                seen += line
+        finally:
+            conn.close()
+
     def test_event_stream_sends_bus_events_and_reset(self):
         self.post("/tick?minutes=1")
         conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)

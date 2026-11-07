@@ -8,8 +8,12 @@ be read and edited like any web page. This file is only the small server:
   GET  /, /app.css, /app.js   the page files (read from disk on every request,
                               so edits show up after a browser refresh)
   GET  /state                 everything the page draws, as JSON
-  GET  /events?since=N        live stream of every event-bus event after number N
+  GET  /dataset               every place, hub, vehicle, intersection and road with
+                              all their ids, coordinates and values (Dataset menu)
+  GET  /events?since=N        live stream of every event-bus event after number N,
+                              plus a "clock" signal whenever the clock moves
                               (Server-Sent Events; the browser reconnects by itself)
+  POST /play?on=1&speed=5     start/stop the LIVE clock, and/or set its speed
   POST /tick?minutes=N        advance the clock N minutes
   POST /run                   run the scenario to the end
   POST /road?edge=ID          close the road if it is open, reopen it if closed
@@ -21,6 +25,11 @@ be read and edited like any web page. This file is only the small server:
 Why Server-Sent Events and not WebSocket: the standard library has no
 WebSocket server. SSE is plain HTTP and one-way (server -> browser), which
 is all a live view needs; button clicks are ordinary POST requests.
+
+Live clock: the SERVER runs the city clock (a background thread advances it
+every second while playing). Browsers are only views, so every open tab sees
+the same city at the same time, and anything one person changes (a new
+emergency, the weather...) appears in every tab straight away.
 
 Threads: ThreadingHTTPServer gives every browser connection its own thread,
 but CrisisResponseSystem is not thread-safe. So ALL access to the system
@@ -42,6 +51,9 @@ from ui.cli import format_event
 KEEPALIVE_SECONDS = 15  # an SSE comment line this often keeps the connection open
 MAX_BODY_BYTES = 64 * 1024  # requests are small forms; refuse anything bigger
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+# Live clock speeds: simulated minutes per real second.
+# "real" = real time: one simulated minute per real minute.
+SPEEDS = {"real": 1 / 60, "1": 1.0, "5": 5.0, "15": 15.0}
 STATIC_FILES = {  # URL -> (file name, content type). Only these files are ever served.
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.css": ("app.css", "text/css; charset=utf-8"),
@@ -50,12 +62,19 @@ STATIC_FILES = {  # URL -> (file name, content type). Only these files are ever 
 
 
 class Dashboard:
-    def __init__(self, system, simulator, make_world=None):
+    def __init__(self, system, simulator, make_world=None, tick_seconds=1.0):
         """make_world(): optional function returning a fresh (system, simulator)
-        pair; it powers the Reset button. Without it, Reset is disabled."""
+        pair; it powers the Reset button. Without it, Reset is disabled.
+        tick_seconds: how often (real seconds) the live clock moves forward."""
         self.changed = threading.Condition()  # its lock guards every use of the system
         self.make_world = make_world
-        self.run_id = 1  # goes up on every reset, so browsers know to clear their log
+        self.run_id = 1      # goes up on every reset, so browsers know to clear their log
+        self.version = 0     # goes up on every change, so event streams can send "clock"
+        self.playing = False # is the live clock running?
+        self.speed = "1"     # key of SPEEDS
+        self.tick_seconds = tick_seconds
+        self._stop = threading.Event()
+        self._clock_thread = None
         self._use(system, simulator)
 
     def _use(self, system, simulator):
@@ -68,8 +87,35 @@ class Dashboard:
         if self.make_world is None:
             return False, "Reset is not available (dashboard started without a scenario builder)"
         self._use(*self.make_world())
-        self.run_id += 1
+        self.run_id += 1  # (the live clock keeps its play/pause setting)
         return True, f"Scenario restarted at {fmt_time(self.system.now)}"
+
+    # ------------------------------------------------------------ live clock
+    def bump(self):
+        """Something changed: wake every event stream. Call with the lock held."""
+        self.version += 1
+        self.changed.notify_all()
+
+    def _clock_loop(self):
+        """Background thread: while playing, move the clock SPEEDS[speed] simulated
+        minutes forward every tick_seconds real seconds. Stops at the scenario end."""
+        while not self._stop.wait(self.tick_seconds):
+            with self.changed:
+                if not self.playing:
+                    continue
+                if self.sim.finished():
+                    self.playing = False
+                else:
+                    self.sim.advance(SPEEDS[self.speed] * self.tick_seconds)
+                self.bump()
+
+    def start_clock(self):
+        if self._clock_thread is None:
+            self._clock_thread = threading.Thread(target=self._clock_loop, daemon=True)
+            self._clock_thread.start()
+
+    def stop(self):
+        self._stop.set()
 
     # ------------------------------------------------------------ data for the page
     def state(self):
@@ -87,6 +133,8 @@ class Dashboard:
             "clock": fmt_time(now),
             "now": now,
             "finished": self.sim.finished(),
+            "playing": self.playing,
+            "speed": self.speed,
             "scheduled": len(self.sim.pending()),
             "can_reset": self.make_world is not None,
             "last_seq": len(s.bus.log),
@@ -161,6 +209,39 @@ class Dashboard:
                        "eta": fmt_time(trips[tid].delivery_time)} for tid in e.trip_ids if tid in trips],
         }
 
+    def dataset_info(self):
+        """Everything in the loaded dataset, as tables (Dataset menu). Call with the lock held."""
+        s, g, ds = self.system, self.system.graph, self.system.dataset
+        node = g.nodes
+        here = {t.vehicle_id: t.current_node(s.now) for t in s.dispatcher.active_trips()}
+        requests_at = {}
+        for e in s.emergencies.values():
+            requests_at[e.node] = requests_at.get(e.node, 0) + 1
+        cfg = s.config["conditions"]
+        return {
+            "meta": {"id": ds.id, "name": ds.name, "center": ds.center, "zoom": ds.zoom,
+                     "sources": ds.sources, "disclosure": ds.disclosure, "warnings": ds.warnings,
+                     "counts": {"intersections": len(node), "roads": len(g.edges), "places": len(s.pois),
+                                "hubs": len(s.hubs), "vehicles": len(s.vehicles)},
+                     "weather_factors": cfg["weather_factors"], "rush_hours": cfg["rush_hours"]},
+            "places": [{"id": p.id, "name": p.name, "kind": p.kind, "node": p.node, "lat": p.lat, "lng": p.lng,
+                        "address": p.address, "hub": p.id in s.hubs, "requests": requests_at.get(p.node, 0)}
+                       for p in sorted(s.pois.values(), key=lambda p: id_sort_key(p.id))],
+            "hubs": [{"id": h.id, "name": h.name, "node": h.node, "lat": node[h.node].lat, "lng": node[h.node].lng,
+                      "normal": h.normal, "cold": h.cold, "initial_normal": h.initial_normal,
+                      "initial_cold": h.initial_cold} for h in sorted(s.hubs.values(), key=lambda h: id_sort_key(h.id))],
+            "vehicles": [{"id": v.id, "name": v.name, "refrigerated": v.refrigerated, "capacity": v.capacity,
+                          "fuel": round(v.fuel, 1), "max_fuel": v.max_fuel, "status": v.status, "home": v.home,
+                          "location": here.get(v.id, v.location), "trip": v.trip_id}
+                         for v in sorted(s.vehicles.values(), key=lambda v: id_sort_key(v.id))],
+            "nodes": [{"id": n.id, "name": n.name, "lat": n.lat, "lng": n.lng, "closed": n.id in g.closed_nodes,
+                       "roads": len(g.adjacency.get(n.id, []))} for n in node.values()],
+            "edges": [{"id": e.id, "a": e.a, "b": e.b, "a_name": node[e.a].name, "b_name": node[e.b].name,
+                       "street": e.street, "km": round(e.km, 3), "w": e.w, "minutes": round(g.edge_cost(e.id), 2),
+                       "hwy": e.hwy, "terrain": e.terrain, "closed": e.id in g.closed_edges,
+                       "slow": g.edge_slowdowns.get(e.id, 1.0)} for e in g.edges.values()],
+        }
+
     # ------------------------------------------------------------ actions (POST)
     def act(self, path, query, body):
         """Run one button action. Returns (ok, message, extra dict). Call with the lock held."""
@@ -173,7 +254,20 @@ class Dashboard:
                 return False, f"minutes must be more than 0 and at most {self.sim.max_minutes:g}", {}
             self.sim.advance(minutes)
             return True, f"Clock is now {fmt_time(self.system.now)}", {}
+        if path == "/play":
+            if "speed" in query:
+                key = query["speed"][0]
+                if key not in SPEEDS:
+                    return False, f"speed must be one of {', '.join(SPEEDS)}", {}
+                self.speed = key
+            if "on" in query:
+                on = query["on"][0] in ("1", "true", "yes")
+                if on and self.sim.finished():
+                    return False, "The scenario has finished: press Reset to run it again", {}
+                self.playing = on
+            return True, ("Live" if self.playing else "Paused") + f" at speed {self.speed}", {}
         if path == "/run":
+            self.playing = False
             self.sim.run()
             return True, f"Ran to {fmt_time(self.system.now)}", {}
         if path == "/reset":
@@ -210,16 +304,22 @@ class Dashboard:
         handler = type("DashboardHandler", (_Handler,), {"dashboard": self})
         server = ThreadingHTTPServer((host, port), handler)
         server.daemon_threads = True  # open event streams must not block shutdown
+        self.start_clock()
         return server
 
-    def serve(self, port=8765, host="127.0.0.1"):
+    def serve(self, port=8765, host="127.0.0.1", autoplay=True):
+        """autoplay: start the live clock straight away (the city runs on its own)."""
         server = self.make_server(port, host)
+        with self.changed:
+            self.playing = autoplay and not self.sim.finished()
         print(f"Dashboard: open http://{host}:{server.server_port}/ in a browser (Ctrl-C to stop)")
+        print("The city clock is " + ("running live." if self.playing else "paused: press Play in the page."))
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             print("\nDashboard stopped.")
         finally:
+            self.stop()
             server.server_close()
 
 
@@ -249,6 +349,10 @@ class _Handler(BaseHTTPRequestHandler):
             with d.changed:
                 body = json.dumps(d.state(), default=str)
             self._send(200, body, "application/json")
+        elif url.path == "/dataset":
+            with d.changed:
+                body = json.dumps(d.dataset_info(), default=str)
+            self._send(200, body, "application/json")
         elif url.path == "/events":
             self._stream(parse_qs(url.query))
         else:
@@ -273,19 +377,21 @@ class _Handler(BaseHTTPRequestHandler):
             return
         with d.changed:
             ok, message, extra = d.act(url.path, parse_qs(url.query), body)
-            d.changed.notify_all()  # wake the event streams
+            d.bump()  # wake the event streams
         reply = {"ok": ok, "message": message, **extra}
         self._send(200 if ok else 400, json.dumps(reply, default=str), "application/json")
 
     def _stream(self, query):
         """Server-Sent Events: 'id: N / event: bus / data: {json}' blocks, forever.
-        After a reset, sends one 'event: reset' and starts again from event 1."""
+        After a reset, sends one 'event: reset' and starts again from event 1.
+        Whenever anything changed (even a quiet minute with no events) it also
+        sends 'event: clock', so pages redraw the clock and moving vehicles."""
         d = self.dashboard
         try:  # a reconnecting browser sends the last id it saw
             sent = int(self.headers.get("Last-Event-ID") or query.get("since", ["0"])[0])
         except ValueError:
             sent = 0
-        run = d.run_id
+        run, version = d.run_id, d.version
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -293,8 +399,12 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             while True:
                 with d.changed:
-                    d.changed.wait_for(lambda: len(d.system.bus.log) > sent or d.run_id != run,
-                                       timeout=KEEPALIVE_SECONDS)
+                    d.changed.wait_for(lambda: len(d.system.bus.log) > sent or d.run_id != run
+                                       or d.version != version, timeout=KEEPALIVE_SECONDS)
+                    clock = None
+                    if d.version != version:
+                        version = d.version
+                        clock = json.dumps({"clock": fmt_time(d.system.now), "playing": d.playing})
                     if d.run_id != run:
                         run, sent, lines = d.run_id, 0, None
                     else:
@@ -308,7 +418,9 @@ class _Handler(BaseHTTPRequestHandler):
                     for seq, data in lines:
                         self.wfile.write(f"id: {seq}\nevent: bus\ndata: {data}\n\n".encode("utf-8"))
                     sent = lines[-1][0]
-                else:
+                if clock is not None:
+                    self.wfile.write(f"event: clock\ndata: {clock}\n\n".encode("utf-8"))
+                elif not lines:
                     self.wfile.write(b": keep-alive\n\n")
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
