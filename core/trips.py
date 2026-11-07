@@ -56,8 +56,12 @@ class Trip:
         return self.status in ACTIVE_STATUSES
 
     def is_loaded(self, now):
-        """Has the vehicle picked the food up yet?"""
-        return self.pickup_index is None or now >= self.pickup_time
+        """Has the vehicle finished loading the food?
+
+        One rule for every plan: loading is done at pickup_time. (A plan made
+        for an already-loaded vehicle sets pickup_time to its start time.)
+        """
+        return now >= self.pickup_time
 
     def position_index(self, now):
         """Index of the last node reached at time `now`."""

@@ -56,13 +56,20 @@ class PathTree:
     prev_edge: dict  # node -> edge used to arrive at node
 
 
-def _dijkstra(graph, source, target=None, blocked_edges=()):
+def _dijkstra(graph, source, target=None, blocked_edges=(), closed_ends=False):
     """Core Dijkstra loop shared by every public function.
 
     Heap entries are (distance, counter, node). The counter breaks ties in
     insertion order, so results are deterministic and we never have to
     compare node ids of different types (int vs str).
     If `target` is given we stop as soon as it is settled (early exit).
+
+    Closed intersections are never passed THROUGH. The search may always
+    leave `source` even if it is closed. With closed_ends=True (the reverse
+    search in shortest_path_tree) a closed node may also be reached as the
+    final step, because in the real forward trip that node is where the
+    vehicle STARTS, and a vehicle may drive away from a closed intersection.
+    This keeps trees and find_route() giving the same answers.
     """
     dist = {source: 0.0}
     km = {source: 0.0}
@@ -77,7 +84,9 @@ def _dijkstra(graph, source, target=None, blocked_edges=()):
         settled.add(node)
         if node == target:
             break
-        for neighbor, edge_id in graph.open_neighbors(node, blocked_edges):
+        if node != source and node in graph.closed_nodes:
+            continue  # reached a closed node as an end point: never drive on through it
+        for neighbor, edge_id in graph.open_neighbors(node, blocked_edges, include_closed_nodes=closed_ends):
             if neighbor in settled:
                 continue
             new_d = d + graph.edge_cost(edge_id)
@@ -138,11 +147,14 @@ def shortest_path_tree(graph, source):
 
     Roads are two-way, so this also gives the distance FROM every node TO
     `source`. The matcher uses that: one run from the emergency site tells
-    it how far every hub is.
+    it how far every hub is. Same closure rules as find_route(x, source):
+    a closed `source` cannot be driven INTO, so only itself is reachable.
     """
     if source not in graph.nodes:
         return PathTree(source, {}, {}, {}, {})
-    return _dijkstra(graph, source)
+    if source in graph.closed_nodes:
+        return PathTree(source, {source: 0.0}, {source: 0.0}, {}, {})
+    return _dijkstra(graph, source, closed_ends=True)
 
 
 def path_from_tree(tree, start):
@@ -174,11 +186,13 @@ def alternative_routes(graph, source, target, k=3):
     if not best.found:
         return [best]
     routes = [best]
-    seen = {tuple(best.path)}
+    # Compare by EDGES, not nodes: two parallel roads between the same
+    # intersections give the same node list but are different routes.
+    seen = {tuple(best.edges)}
     for edge_id in best.edges:
         detour = find_route(graph, source, target, blocked_edges={edge_id})
-        if detour.found and tuple(detour.path) not in seen:
-            seen.add(tuple(detour.path))
+        if detour.found and tuple(detour.edges) not in seen:
+            seen.add(tuple(detour.edges))
             routes.append(detour)
     routes.sort(key=lambda r: (round(r.cost, 6), len(r.edges)))
     return routes[:k]

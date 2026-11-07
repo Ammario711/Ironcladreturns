@@ -9,3 +9,6 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Local editor/agent settings
+.claude/

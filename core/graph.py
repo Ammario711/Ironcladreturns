@@ -87,17 +87,18 @@ class Graph:
             factor *= self.highway_multiplier
         return edge.w * factor
 
-    def open_neighbors(self, node_id, blocked_edges=()):
+    def open_neighbors(self, node_id, blocked_edges=(), include_closed_nodes=False):
         """Yield (neighbour id, edge id) for every usable road out of node_id.
 
-        Skips closed edges, closed neighbour nodes, and any extra
-        `blocked_edges` (used when searching for alternative routes).
+        Skips closed edges, any extra `blocked_edges` (used when searching
+        for alternative routes) and, unless include_closed_nodes is True,
+        closed neighbour nodes.
         """
         for edge_id in self.adjacency.get(node_id, []):
             if edge_id in self.closed_edges or edge_id in blocked_edges:
                 continue
             neighbor = self.edges[edge_id].other_end(node_id)
-            if neighbor in self.closed_nodes:
+            if neighbor in self.closed_nodes and not include_closed_nodes:
                 continue
             yield neighbor, edge_id
 

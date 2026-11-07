@@ -35,7 +35,7 @@ Every change is logged with a timestamp and an explanation. Components talk thro
 The same code runs on any dataset with the competition file structure. The dataset path is a command-line argument.
 
 ## Requirements and dependencies
-- **Python 3.10 or newer.** Nothing to install: only the Python standard library is used. The modules used are `heapq`, `dataclasses`, `enum`, `json`, `argparse`, `cmd`, `shlex`, `random`, `re`, `math`, `collections` and `copy`. The tests also use `unittest`, `tempfile` and `os`.
+- **Python 3.10 or newer.** Nothing to install: only the Python standard library is used. The modules used are `heapq`, `dataclasses`, `enum`, `json`, `argparse`, `cmd`, `shlex`, `random`, `re`, `math`, `collections`, `copy` and `difflib`. The web dashboard also uses `http.server`, `threading` and `urllib.parse`. The tests also use `unittest`, `unittest.mock`, `tempfile`, `os`, `io`, `http.client` and `urllib.request`.
 - No third-party libraries.
 
 ## How to run (from this folder)
@@ -44,8 +44,9 @@ python3 --version                       # must be 3.10+
 python3 main.py --demo --run            # Dataset 1 + sample scenario, prints the event log and a final report
 python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
+python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 71 automated tests, under 1 second
+python3 -m unittest discover -s tests -v   # 106 automated tests, a few seconds
 ```
 
 ### Dataset 2 (zero code changes)
@@ -89,9 +90,10 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 | `location_category` | hospital, senior_home, shelter, school, community or other. Taken from the place if omitted |
 | `people_affected` | whole number of at least 1 |
 | `food_normal`, `food_cold` | whole numbers of at least 0; the total must be more than 0 |
+| `food_quantity` | the abstract's single quantity (also `food_quantity_needed`, `quantity`, `units`), used only when `food_normal`/`food_cold` are absent: all cold if `refrigeration_required` is true, otherwise all normal |
 | `refrigeration_required` | must be true exactly when `food_cold` > 0 (derived if omitted) |
 | `severity` | 1 to 5 |
-| `deadline`, `submitted_at` | `"HH:MM"` or minutes; the deadline must come after submission. A missing submission time means "now" |
+| `deadline`, `submitted_at` | `"HH:MM"`, `"HH:MM:SS"`, `"HH:MM+1d"` (next day), an ISO time like `"2026-11-07T08:30"` (date ignored), or minutes. The deadline must come after submission. A missing submission time means "now" (in a file: the scenario start) |
 
 **Disruptions** (see [samples/disruptions.json](samples/disruptions.json)):
 - `road_closure` and `road_reopen`, by `edge`, `edges`, or `a` + `b`
@@ -113,7 +115,7 @@ core/              algorithms, no dataset-specific code:
                    event_bus, disruptions, dispatcher, system (facade)
 loader/            dataset / config / input-file loading
 sim/               simulator + seeded scenario generator
-ui/                command-line dashboard
+ui/                command-line dashboard (cli.py) + live web dashboard (web.py)
 tests/             unittest suite + Dataset-2-style fixture
 DECISIONS.md       algorithms, data structures, complexity, trade-offs
 PROGRESS.md        build status, file map, known issues, next steps
@@ -132,6 +134,7 @@ The dataset's own disclosure says it is a generated simulation: an approximate d
 **Generative AI.** Claude (Anthropic), model *Claude Opus 5.5* (`claude-opus-5-5`), was used through Claude Code on 2026-11-07. It generated the first draft of the code, tests, sample data and documentation, from a specification written by the team.
 - Every AI-drafted file starts with `AI-GENERATED DRAFT - team to review and modify`.
 - The team reviewed, tested and modified this draft. The table in [PROGRESS.md](PROGRESS.md) records who changed what. TODO: complete it before submission.
+- Gemini 4 Argon (Google), used in Google Antigravity on 2026-11-07, reviewed the draft and produced a list of bugs and requirement gaps. Claude implemented the fixes. Suggestions we chose not to follow are listed in PROGRESS.md, with reasons.
 - No AI tool was used to write presentation scripts.
 
 **Algorithms and references.**

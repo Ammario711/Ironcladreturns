@@ -109,17 +109,70 @@ def deep_merge(base, override):
     return result
 
 
+# Settings that must be > 0: zero would divide by zero (caps, speed) or make
+# the simulator loop forever (step_minutes). Paths are inside the config dict.
+POSITIVE_SETTINGS = [
+    ("scoring", "people_cap"), ("scoring", "shortage_cap"),
+    ("scoring", "deadline_horizon_minutes"), ("scoring", "travel_cap_minutes"),
+    ("routing", "default_speed_kmh"), ("routing", "highway_multiplier"),
+    ("matching", "max_vehicles_per_emergency_per_cycle"),
+    ("units", "stock_multiplier"), ("units", "capacity_multiplier"), ("units", "default_capacity"),
+    ("simulation", "step_minutes"), ("simulation", "max_minutes"),
+]
+# Settings that may be 0 but never negative.
+NON_NEGATIVE_SETTINGS = [
+    ("queue", "aging_points_per_minute"), ("queue", "priority_change_event_threshold"),
+    ("matching", "load_minutes"), ("matching", "unload_minutes"),
+    ("fuel", "per_km"), ("fuel", "default_fuel"),
+    ("lifecycle", "confirm_minutes"), ("lifecycle", "fail_grace_minutes"),
+]
+
+
+def validate_config(config):
+    """Raise ConfigError if a number is missing, not a number, or out of range."""
+    def number_at(section, key):
+        value = config.get(section, {}).get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:  # value != value: NaN
+            raise ConfigError(f"config {section}.{key} must be a number (got {value!r})")
+        return value
+
+    for section, key in POSITIVE_SETTINGS:
+        if number_at(section, key) <= 0:
+            raise ConfigError(f"config {section}.{key} must be greater than 0 (got {config[section][key]})")
+    for section, key in NON_NEGATIVE_SETTINGS:
+        if number_at(section, key) < 0:
+            raise ConfigError(f"config {section}.{key} cannot be negative (got {config[section][key]})")
+    for name, factor in config["routing"]["terrain_multipliers"].items():
+        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor <= 0:
+            raise ConfigError(f"config routing.terrain_multipliers.{name} must be a number > 0 (got {factor!r})")
+    if not config["scoring"]["weights"] or sum(config["scoring"]["weights"].values()) <= 0:
+        raise ConfigError("config scoring.weights must contain at least one positive weight")
+
+
+def apply_overrides(override):
+    """Defaults + override, validated. The override is also kept in
+    config["_overrides"] so values the team set explicitly (e.g. terrain
+    factors) can win over values read from the dataset."""
+    config = deep_merge(DEFAULT_CONFIG, override)
+    config["_overrides"] = copy.deepcopy(override)
+    validate_config(config)
+    return config
+
+
 def load_config(path=None):
     """Return the default config, optionally merged with a JSON file."""
     if path is None:
-        return copy.deepcopy(DEFAULT_CONFIG)
+        return apply_overrides({})
     try:
-        with open(path, encoding="utf-8") as handle:
+        # utf-8-sig also accepts files saved with a byte-order mark
+        with open(path, encoding="utf-8-sig") as handle:
             override = json.load(handle)
     except FileNotFoundError:
         raise ConfigError(f"Config file not found: {path}") from None
     except json.JSONDecodeError as exc:
         raise ConfigError(f"Config file {path} is not valid JSON (line {exc.lineno}): {exc.msg}") from None
+    except (OSError, UnicodeDecodeError) as exc:  # a folder, no permission, not UTF-8 text...
+        raise ConfigError(f"Cannot read config file {path}: {exc}") from None
     if not isinstance(override, dict):
         raise ConfigError(f"Config file {path} must contain a JSON object at the top level")
-    return deep_merge(DEFAULT_CONFIG, override)
+    return apply_overrides(override)

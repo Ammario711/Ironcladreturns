@@ -23,20 +23,21 @@ class Simulator:
         self.max_minutes = system.config["simulation"]["max_minutes"]
         self._pending = []     # [time, order, seq, kind, raw]; order 0 = disruption, 1 = emergency
         self._seq = 0
+        self._undated = []     # (order, kind, raw) with no usable time; see _place_undated
         self.input_errors = [] # (kind, raw, [messages]) for the report
         self.started = False
 
     # ------------------------------------------------------------ scheduling
     def _time_of(self, raw, keys):
-        """Scheduled time of a raw record; unparsable/missing -> now (validation will report it)."""
+        """Scheduled time of a raw record, or None if it has no usable time."""
         if isinstance(raw, dict):
             for key in keys:
                 if raw.get(key) is not None:
                     try:
                         return parse_time(raw[key])
                     except ValueError:
-                        break
-        return self.system.now
+                        return None  # validation will report the bad time
+        return None
 
     def schedule_emergency(self, raw):
         t = self._time_of(raw, ("submitted_at", "submission_time", "submitted", "time"))
@@ -46,21 +47,43 @@ class Simulator:
         self._push(self._time_of(raw, ("time", "at")), 0, "disruption", raw)
 
     def _push(self, t, order, kind, raw):
+        if t is None:
+            if not self.started:
+                # No time given: it happens when the scenario STARTS (the earliest
+                # timed input), not at 00:00. Placed in _place_undated().
+                self._undated.append((order, kind, raw))
+                return
+            t = self.system.now  # during a run: right now
         self._seq += 1
         self._pending.append([max(t, self.system.now), order, self._seq, kind, raw])
         self._pending.sort(key=lambda item: item[:3])
 
+    def _place_undated(self):
+        if self._undated:
+            start = min((item[0] for item in self._pending), default=self.system.now)
+            undated, self._undated = self._undated, []
+            for order, kind, raw in undated:
+                self._push(start, order, kind, raw)
+
     def pending(self):
-        return [(item[0], item[3], item[4]) for item in self._pending]
+        undated = [(None, kind, raw) for _order, kind, raw in self._undated]
+        return [(item[0], item[3], item[4]) for item in self._pending] + undated
 
     # ------------------------------------------------------------ running
     def start_time(self):
-        if not self.started and self._pending and self.system.now == 0:
-            return float(int(self._pending[0][0]))
+        """Where the clock starts: jump to the first scheduled input, but only
+        if nothing has happened yet (so a request typed in at 00:00 is not skipped)."""
+        if not self.started:
+            self._place_undated()
+            nothing_yet = self.system.now == 0 and not self.system.bus.log
+            if self._pending and nothing_yet:
+                return float(int(self._pending[0][0]))
         return self.system.now
 
     def step_to(self, t):
         """Process everything scheduled up to t, then tick the system at t."""
+        if not self.started:
+            self._place_undated()
         self.started = True
         s = self.system
         s.set_clock(t)
@@ -78,20 +101,24 @@ class Simulator:
 
     def finished(self):
         s = self.system
-        return not self._pending and s.all_done() and not s.dispatcher.active_trips()
+        return not self._pending and not self._undated and s.all_done() and not s.dispatcher.active_trips()
 
     def run(self, until=None):
-        """Run until finished (or until clock time `until`). Returns end time."""
-        t = self.start_time()
+        """Run until finished (or until clock time `until`). Returns the end time.
+
+        Never re-ticks the current minute when already running, and never
+        steps past `until`.
+        """
+        if self.started and self.finished():
+            return self.system.now
+        t = self.start_time() if not self.started else self.system.now + self.step
         first = t
-        while True:
+        while until is None or t <= until + 1e-9:
             self.step_to(t)
-            if until is not None and t >= until:
-                break
             if self.finished() or t - first >= self.max_minutes:
                 break
             t += self.step
-        return t
+        return self.system.now
 
     def advance(self, minutes):
         """Move forward `minutes` of simulated time (used by the CLI)."""
@@ -109,10 +136,13 @@ class Simulator:
         s = self.system
         st = s.stats()
         lines = [f"=== Scenario report at {st['time']} ({s.dataset.name}) ==="]
-        lines.append(f"Emergencies: {st['emergencies']} accepted, {len(self.input_errors)} rejected inputs")
-        lines.append("Final states: " + ", ".join(f"{k} {v}" for k, v in sorted(st["by_state"].items())))
+        bad_disruptions = [item for item in self.input_errors if item[0] == "disruption"]
+        # system.rejected holds EVERY rejected request (files, CLI one-liners, generator)
+        lines.append(f"Emergencies: {st['emergencies']} accepted, {len(s.rejected)} rejected requests, "
+                     f"{len(bad_disruptions)} rejected disruptions")
+        lines.append("Final states: " + (", ".join(f"{k} {v}" for k, v in sorted(st["by_state"].items())) or "none"))
         lines.append(f"Fully delivered: {st['fully_delivered']} ({st['on_time']} on time); "
-                     f"avg request-to-delivery {st['avg_response_minutes']} min")
+                     f"avg request-to-delivery {_or_na(st['avg_response_minutes'], ' min')}")
         lines.append(f"Food delivered: {st['units_delivered']}/{st['units_requested']} units; "
                      f"people fully served: {st['people_fully_served']}")
         lines.append(f"Stock left: {st['stock_left_normal']} normal / {st['stock_left_cold']} cold; "
@@ -124,7 +154,15 @@ class Simulator:
             last = e.history[-1].explanation if e.history else ""
             lines.append(f"{e.id:<6}{e.state.value:<18}{e.delivered_total():>5}/{e.requested_total():<6}  "
                          f"{fmt_time(e.deadline):<9}{done:<9}{last[:90]}")
-        for kind, raw, errors in self.input_errors:
+        for raw, errors in s.rejected:
             ident = raw.get("id", "?") if isinstance(raw, dict) else "?"
-            lines.append(f"REJECTED {kind} {ident}: " + "; ".join(errors))
+            lines.append(f"REJECTED emergency {ident}: " + "; ".join(errors))
+        for _kind, raw, errors in bad_disruptions:
+            lines.append(f"REJECTED disruption {raw.get('type', '?') if isinstance(raw, dict) else '?'}: "
+                         + "; ".join(errors))
         return "\n".join(lines)
+
+
+def _or_na(value, unit=""):
+    """Readable value for the report: None (nothing to average yet) -> N/A."""
+    return "N/A" if value is None else f"{value}{unit}"

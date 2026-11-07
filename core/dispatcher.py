@@ -95,9 +95,10 @@ class Dispatcher:
                 s.fail(e, now, f"Site can never be reached: {reason}")
                 continue
             self._record_waiting(e, now, reason)
-            still_waiting.append(e)
-        for e in still_waiting:  # back into the queue for the next cycle
-            s.enqueue(e, now)
+            still_waiting.append((e, bool(result.trips)))
+        for e, partly_assigned in still_waiting:  # back into the queue for the next cycle
+            # Less food missing now -> lower priority; announce it with the real cause.
+            s.enqueue(e, now, reason="remaining need changed after a partial assignment" if partly_assigned else None)
 
     def _start_trips(self, e, result, now):
         s = self.system
@@ -108,7 +109,7 @@ class Dispatcher:
             s.bus.publish("route-updated", {
                 "trip": trip.id, "vehicle": trip.vehicle_id, "emergency": e.id, "status": "assigned",
                 "path": list(trip.nodes), "eta": trip.delivery_time,
-                "message": f"{trip.vehicle_id} -> {e.id}: {route.describe(s.graph).split(' (')[0]}, "
+                "message": f"{trip.vehicle_id} -> {e.id}: {route.describe(s.graph).rsplit(' (', 1)[0]}, "
                            f"ETA {fmt_time(trip.delivery_time)}",
             }, now)
         text = "Assigned " + "; ".join(t.summary() for t in result.trips)
@@ -152,6 +153,8 @@ class Dispatcher:
         e = s.emergencies[trip.emergency_id]
         e.delivered_normal += trip.normal
         e.delivered_cold += trip.cold
+        if trip.source_kind == "cargo":
+            self._cleanup_cargo(trip.source_id)  # rescued cargo is now delivered
         outstanding = e.requested_total() - e.delivered_total()
         if e.is_terminal():
             return  # should not happen: failures only fire when nothing is moving
@@ -188,13 +191,21 @@ class Dispatcher:
         for trip in self.active_trips():
             if trip.status != BLOCKED:
                 continue
-            here = s.vehicles[trip.vehicle_id].location
+            vehicle = s.vehicles[trip.vehicle_id]
+            here = vehicle.location
             route = find_route(s.graph, here, trip.dest_node)
             if not route.found:
                 continue
-            trip.status = EN_ROUTE
-            self._apply_new_plan(trip, now, None, route, s.vehicles[trip.vehicle_id], 0.0)
             e = s.emergencies[trip.emergency_id]
+            if not self._has_fuel_for(vehicle, route.km):  # parking refunded the old route
+                cargo = self._strand(trip, now, here)
+                s.enqueue(e, now)
+                self.settle_state(e, now, f"{event.payload['message']}, but {vehicle.id} lacks fuel for the "
+                                          f"{route.km:.1f} km route; cargo {cargo.id} will be transferred "
+                                          f"to another vehicle", force_delayed=True)
+                continue
+            trip.status = EN_ROUTE
+            self._apply_new_plan(trip, now, None, route, vehicle, 0.0)
             self.settle_state(e, now, f"{event.payload['message']}: {trip.vehicle_id} can move again via "
                                       f"{route.describe(s.graph)}; ETA {fmt_time(trip.delivery_time)}")
 
@@ -209,13 +220,7 @@ class Dispatcher:
         here = trip.current_node(now)
         vehicle.location = here
         if trip.is_loaded(now):
-            cargo = StrandedCargo(id=s.new_cargo_id(), emergency_id=e.id, node=here,
-                                  normal=trip.normal, cold=trip.cold, from_vehicle=vehicle.id)
-            s.stranded[cargo.id] = cargo
-            trip.status = STRANDED
-            vehicle.trip_id = None
-            e.unassigned_normal += trip.normal
-            e.unassigned_cold += trip.cold
+            cargo = self._strand(trip, now, here)
             text = (f"{vehicle.id} broke down at {s.graph.node_label(here)} carrying "
                     f"{_units_text(trip.normal, trip.cold)}; cargo {cargo.id} will be transferred to another vehicle")
         else:
@@ -234,7 +239,7 @@ class Dispatcher:
         index = trip.position_index(now)
         here = trip.nodes[index]
         old_eta = trip.delivery_time
-        old_km = trip.remaining_km(g, now)
+        old_km = trip.remaining_km(g, now)  # fuel for this part was reserved at assignment
         if trip.is_loaded(now):
             to_dest = find_route(g, here, trip.dest_node)
             if not to_dest.found:
@@ -244,22 +249,34 @@ class Dispatcher:
                     "message": f"ROUTE UNAVAILABLE for {vehicle.id}: {to_dest.reason}"}, now)
                 return (f"{vehicle.id}: no alternative route to the site ({to_dest.reason}); holding at "
                         f"{g.node_label(here)} with cargo until a road reopens.")
+            if not self._has_fuel_for(vehicle, to_dest.km - old_km):  # check BEFORE driving the detour
+                cargo = self._strand(trip, now, here)
+                s.enqueue(e, now)
+                return (f"{vehicle.id} lacks fuel for the {to_dest.km:.1f} km detour; it stops at "
+                        f"{g.node_label(here)} and cargo {cargo.id} will be transferred to another vehicle.")
             self._apply_new_plan(trip, now, None, to_dest, vehicle, old_km)
         else:
-            if index >= trip.pickup_index:   # at the source, still loading
-                to_source, start, load = None, trip.pickup_time, 0.0
-                to_dest = find_route(g, trip.source_node, trip.dest_node)
+            if trip.pickup_index is None or index >= trip.pickup_index:
+                # Already at the source and still loading: a zero-length first
+                # leg keeps the loading time that is LEFT (not a fresh 5 min).
+                src = trip.source_node
+                to_source = RouteResult(True, src, src, [src], [], 0.0, 0.0)
+                load = max(0.0, trip.pickup_time - now)
             else:
                 to_source = find_route(g, here, trip.source_node)
-                to_dest = find_route(g, trip.source_node, trip.dest_node)
-                start, load = now, mcfg["load_minutes"]
-            if not to_dest.found or (to_source is not None and not to_source.found):
-                why = to_dest.reason if not to_dest.found else to_source.reason
+                load = mcfg["load_minutes"]
+            to_dest = find_route(g, trip.source_node, trip.dest_node)
+            why = None
+            if not to_source.found or not to_dest.found:
+                why = to_source.reason if not to_source.found else to_dest.reason
+            elif not self._has_fuel_for(vehicle, to_source.km + to_dest.km - old_km):
+                why = "not enough fuel for the detour"
+            if why:
                 self._cancel_trip(trip, now, here)
                 s.enqueue(e, now)
                 return (f"{vehicle.id} cannot complete its trip via {trip.source_id} ({why}); assignment cancelled, "
                         f"{_units_text(trip.normal, trip.cold)} returned to {trip.source_id}; will re-match.")
-            trip.apply_plan(g, start, to_source, to_dest, load, mcfg["unload_minutes"])
+            trip.apply_plan(g, now, to_source, to_dest, load, mcfg["unload_minutes"])
             self._charge_fuel(vehicle, trip.km - old_km)
             trip.reroutes += 1
             self._publish_reroute(trip, e, now)
@@ -279,13 +296,47 @@ class Dispatcher:
         s.bus.publish("route-updated", {
             "trip": trip.id, "vehicle": trip.vehicle_id, "emergency": e.id, "status": "rerouted",
             "path": list(trip.nodes), "eta": trip.delivery_time,
-            "message": f"{trip.vehicle_id} rerouted: {route.describe(s.graph).split(' (')[0]}, "
+            "message": f"{trip.vehicle_id} rerouted: {route.describe(s.graph).rsplit(' (', 1)[0]}, "
                        f"new ETA {fmt_time(trip.delivery_time)}"}, now)
 
     def _charge_fuel(self, vehicle, extra_km):
+        """Take fuel for extra km (negative km = refund)."""
         fcfg = self.system.config["fuel"]
         if fcfg["enabled"]:
             vehicle.fuel -= extra_km * fcfg["per_km"]
+
+    def _has_fuel_for(self, vehicle, extra_km):
+        """Can the vehicle drive `extra_km` more km on the fuel it has left?"""
+        fcfg = self.system.config["fuel"]
+        return not fcfg["enabled"] or extra_km * fcfg["per_km"] <= vehicle.fuel + 1e-9
+
+    def _strand(self, trip, now, here):
+        """Food on a vehicle that cannot continue (breakdown or no fuel)
+        becomes StrandedCargo at `here`, for another vehicle to collect."""
+        s = self.system
+        vehicle = s.vehicles[trip.vehicle_id]
+        self._charge_fuel(vehicle, -trip.remaining_km(s.graph, now))  # it will not drive the rest
+        cargo = StrandedCargo(id=s.new_cargo_id(), emergency_id=trip.emergency_id, node=here,
+                              normal=trip.normal, cold=trip.cold, from_vehicle=vehicle.id)
+        s.stranded[cargo.id] = cargo
+        trip.status = STRANDED
+        vehicle.trip_id = None
+        vehicle.location = here
+        if vehicle.status != BROKEN:
+            vehicle.status = IDLE  # still usable for trips its fuel allows
+        e = s.emergencies[trip.emergency_id]
+        e.unassigned_normal += trip.normal
+        e.unassigned_cold += trip.cold
+        return cargo
+
+    def _cleanup_cargo(self, cargo_id):
+        """Forget stranded cargo once it is empty and no active trip may hand units back."""
+        s = self.system
+        cargo = s.stranded.get(cargo_id)
+        in_use = any(t.is_active() and t.source_kind == "cargo" and t.source_id == cargo_id
+                     for t in self.trips.values())
+        if cargo is not None and cargo.units() == 0 and not in_use:
+            del s.stranded[cargo_id]
 
     def _park(self, trip, now, here):
         """Blocked vehicle: it stays put (with its cargo) until a road reopens."""
@@ -296,8 +347,9 @@ class Dispatcher:
         trip.pickup_index = None
         self.system.vehicles[trip.vehicle_id].location = here
 
-    def _cancel_trip(self, trip, now, here):
-        """Undo an assignment that never picked its food up."""
+    def _cancel_trip(self, trip, now, here, return_stock=True):
+        """Undo an assignment. Its food goes back to its source (hub or stranded
+        cargo) unless return_stock is False (food written off)."""
         s = self.system
         vehicle = s.vehicles[trip.vehicle_id]
         self._charge_fuel(vehicle, -trip.remaining_km(s.graph, now))  # refund unused fuel
@@ -307,7 +359,7 @@ class Dispatcher:
         if vehicle.status != BROKEN:
             vehicle.status = IDLE
         store = s.hubs.get(trip.source_id) if trip.source_kind == "hub" else s.stranded.get(trip.source_id)
-        if store is not None:
+        if store is not None and return_stock:
             store.normal += trip.normal
             store.cold += trip.cold
         e = s.emergencies[trip.emergency_id]

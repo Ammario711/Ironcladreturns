@@ -11,7 +11,7 @@ could later replace it without touching /core.
 import cmd
 import shlex
 
-from core.emergency import resolve_location, suggest_locations
+from core.emergency import resolve_location, suggest_locations, validate_emergency
 from core.routing import alternative_routes
 from core.utils import fmt_time, id_sort_key, normalize_id, parse_time
 from loader.input_loader import InputFileError, load_disruptions_file, load_emergencies_file
@@ -210,10 +210,13 @@ class CrisisCLI(cmd.Cmd):
         """events [N] [TYPE] : last N events (default 20), optionally only one type, e.g. events 10 road-closed"""
         count, kind = 20, None
         for part in arg.split():
-            if part.isdigit():
+            if part.lstrip("-").isdigit():
                 count = int(part)
             else:
                 kind = part
+        if count < 1:  # log[-0:] would print the WHOLE log
+            print("Usage: events [N] [TYPE]  (N must be 1 or more)")
+            return
         log = [ev for ev in self.system.bus.log if kind is None or ev.type == kind]
         for event in log[-count:]:
             print(format_event(event))
@@ -235,17 +238,23 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
                 print(exc)
                 return
         else:
-            location = self._ask_location()  # keeps asking until valid (or 'cancel')
-            if location is None:
-                print("Cancelled; nothing was added.")
+            try:
+                location = self._ask_location()  # keeps asking until valid (or 'cancel')
+                if location is None:
+                    print("Cancelled; nothing was added.")
+                    return
+                raw = {"location": location}
+                for field, question in ADD_FIELDS:
+                    answer = input(f"  {question}: ").strip()
+                    if answer:
+                        raw[field] = answer
+            except (EOFError, KeyboardInterrupt):  # Ctrl-D / Ctrl-C in the middle of the form
+                print("\nCancelled; nothing was added.")
                 return
-            raw = {"location": location}
-            for field, question in ADD_FIELDS:
-                answer = input(f"  {question}: ").strip()
-                if answer:
-                    raw[field] = answer
         if isinstance(raw.get("location"), str):
-            raw["location"] = location_from_text(raw["location"])
+            raw["location"] = location_from_text(raw["location"])  # also turns "43.65,-79.38" into lat/lng
+        if self._schedule_if_future(raw):
+            return
         result = self.system.submit_emergency(raw)
         if result.ok:
             print(f"Accepted {result.emergency.id}." + (f" Warnings: {'; '.join(result.warnings)}" if result.warnings else ""))
@@ -254,6 +263,27 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
             print("Rejected. Please fix:")
             for error in result.errors:
                 print(f"  - {error}")
+
+    def _schedule_if_future(self, raw):
+        """A request "submitted" later than the clock is scheduled for that time,
+        not dispatched early. It is checked now so mistakes show immediately.
+        Returns True if it was handled here (scheduled or rejected)."""
+        s = self.system
+        try:
+            submitted = parse_time(raw["submitted_at"]) if raw.get("submitted_at") else None
+        except ValueError:
+            return False  # submit_emergency will report the bad time
+        if submitted is None or submitted <= s.now:
+            return False
+        check = validate_emergency(raw, s.graph, s.pois, s.config, existing_ids=s.emergencies.keys(), now=submitted)
+        if not check.ok:
+            print("Rejected. Please fix:")
+            for error in check.errors:
+                print(f"  - {error}")
+            return True
+        self.sim.schedule_emergency(raw)
+        print(f"Scheduled: it will be submitted at {fmt_time(submitted)} (the clock is {fmt_time(s.now)}).")
+        return True
 
     def _ask_location(self):
         """Ask for the location until it is valid, helping when it is not.
@@ -378,6 +408,10 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
             minutes = float(arg) if arg.strip() else 1.0
         except ValueError:
             print("Usage: tick [MINUTES]")
+            return
+        limit = self.sim.max_minutes
+        if not (0 < minutes <= limit):  # also rejects nan and inf, which would loop forever
+            print(f"MINUTES must be more than 0 and at most {limit:g}")
             return
         end = self.sim.advance(minutes)
         print(f"Clock is now {fmt_time(end)}.")

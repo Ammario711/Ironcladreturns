@@ -9,7 +9,8 @@ are directly comparable:
 
   severity  (severity - min) / (max - min)        1 -> 0.0, 5 -> 1.0
   people    min(people / people_cap, 1)            500+ people -> 1.0
-  deadline  1 - slack / horizon, clamped           slack = deadline - now - travel;
+  deadline  1 - slack / horizon, clamped           slack = deadline - now - travel
+                                                   - load - unload;
                                                    slack <= 0 (will be late) -> 1.0
   shortage  min(unmet units / shortage_cap, 1)     food still missing
   location  category weight from config            hospital 1.0 ... other 0.5
@@ -25,10 +26,11 @@ def _clamp01(x):
     return max(0.0, min(1.0, x))
 
 
-def compute_score(emergency, now, travel_minutes, scoring_cfg, validation_cfg=None):
+def compute_score(emergency, now, travel_minutes, scoring_cfg, validation_cfg=None, service_minutes=0.0):
     """Return (score 0..100, breakdown) for one emergency at time `now`.
 
-    travel_minutes: fastest hub-to-site drive time, or None if unreachable.
+    travel_minutes:  fastest hub-to-site drive time, or None if unreachable.
+    service_minutes: time spent loading + unloading (counts against the deadline too).
     breakdown: {factor: {"factor": 0..1, "points": contribution}}
     """
     weights = scoring_cfg["weights"]
@@ -36,7 +38,11 @@ def compute_score(emergency, now, travel_minutes, scoring_cfg, validation_cfg=No
     hi = (validation_cfg or {}).get("max_severity", 5)
     categories = scoring_cfg["category_weights"]
 
-    slack = emergency.deadline - now - (travel_minutes or 0.0)
+    # Slack = time to spare if we sent food right now. An unreachable site is
+    # assumed to be at least travel_cap away (not 0 minutes, which would
+    # wrongly make it look less urgent).
+    drive = travel_minutes if travel_minutes is not None else scoring_cfg["travel_cap_minutes"]
+    slack = emergency.deadline - now - drive - service_minutes
     factors = {
         "severity": _clamp01((emergency.severity - lo) / max(hi - lo, 1)),
         "people": _clamp01(emergency.people / scoring_cfg["people_cap"]),

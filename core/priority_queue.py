@@ -18,7 +18,9 @@ floating-point differences count as a real tie.
 
 Changing a priority: we do not search the heap (O(n)). We mark the old
 entry inactive and push a new one ("lazy deletion", the pattern from the
-Python heapq docs). Inactive entries are skipped when popped.
+Python heapq docs). Inactive entries are skipped when popped. So the heap
+list may briefly hold dead entries; `_entries` always holds exactly one
+LIVE entry per waiting emergency, and len() counts only those.
     push / update / pop : O(log n)      remove : O(1)
     rebuild (all priorities change, e.g. aging each tick) : O(n) heapify
 """
@@ -85,6 +87,10 @@ class CrisisQueue:
     def priority_of(self, emergency_id):
         entry = self._entries.get(emergency_id)
         return None if entry is None else -entry[0]
+
+    def ids(self):
+        """Ids of everything waiting, in no particular order. O(n), no sorting."""
+        return list(self._entries)
 
     def ordered(self):
         """[(id, priority)] in pop order, WITHOUT changing the queue (for display)."""

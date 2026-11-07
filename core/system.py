@@ -57,8 +57,12 @@ class CrisisResponseSystem:
         # re-routed BEFORE priorities are recalculated.
         self.dispatcher = Dispatcher(self)
         self.bus.subscribe("crisis-created", self._on_crisis_created)
+        # Re-score waiting requests whenever conditions change. resource-depleted
+        # can fire DURING a dispatch cycle: that is safe, because the request
+        # being matched has already been popped, and the rebuilt heap only
+        # holds requests still waiting their turn in this same cycle.
         for event_type in ("road-closed", "road-reopened", "vehicle-breakdown",
-                           "vehicle-repaired", "resource-restocked"):
+                           "vehicle-repaired", "resource-restocked", "resource-depleted"):
             self.bus.subscribe(event_type, self._on_conditions_changed)
 
     # ================================================================ intake
@@ -124,42 +128,62 @@ class CrisisResponseSystem:
 
     def compute_priority(self, e, now):
         """Score + aging. Also stores the breakdown on the emergency for display."""
+        mcfg = self.config["matching"]
         score, breakdown = compute_score(e, now, self.travel_estimate(e),
-                                         self.config["scoring"], self.config["validation"])
+                                         self.config["scoring"], self.config["validation"],
+                                         service_minutes=mcfg["load_minutes"] + mcfg["unload_minutes"])
         bonus = aging_bonus(e, now, self.config["queue"]["aging_points_per_minute"])
         e.base_score, e.score_breakdown, e.aging_bonus = score, breakdown, bonus
         e.priority = round(score + bonus, self.config["queue"]["round_digits"])
         return e.priority
 
-    def enqueue(self, e, now):
-        """(Re)insert an emergency that still has unassigned food."""
+    def enqueue(self, e, now, reason=None):
+        """(Re)insert an emergency that still has unassigned food.
+
+        `reason` (e.g. after a partial assignment) announces the new priority
+        right away, so the next priority-changed event starts from the right
+        "old" value.
+        """
         if e.is_terminal() or e.unassigned_total() == 0:
             return
-        self.queue.push(e.id, self.compute_priority(e, now), e.submitted_at, e.people)
+        before = e.priority
+        new = self.compute_priority(e, now)
+        self.queue.push(e.id, new, e.submitted_at, e.people)
+        if reason:
+            self._announce_priority(e, before, new, now, reason)
 
     def refresh_priorities(self, now, reason=None):
-        """Re-score every waiting emergency and rebuild the heap (O(n)).
+        """Re-score every waiting emergency and rebuild the heap: O(n) scoring
+        (travel times are cached) + O(n) heapify. No sorting needed.
 
-        priority-changed is published when the value moved by at least the
-        configured threshold since the last announcement, or (when `reason`
-        is given, i.e. conditions changed) by any amount.
+        `reason` is given when conditions changed (closure, restock...).
         """
-        threshold = self.config["queue"]["priority_change_event_threshold"]
         items = []
-        for eid, _old in self.queue.ordered():
+        for eid in self.queue.ids():
             e = self.emergencies[eid]
             before = e.priority
             new = self.compute_priority(e, now)
             items.append((eid, new, e.submitted_at, e.people))
-            last = e.last_published_priority if e.last_published_priority is not None else before
-            if abs(new - last) >= threshold or (reason and abs(new - before) >= 0.01):
-                why = reason or "re-score: waiting time, deadline, remaining need"
-                self.bus.publish("priority-changed", {
-                    "id": eid, "old": last, "new": new, "reason": why,
-                    "message": f"{eid} priority {last:.1f} -> {new:.1f} ({why})",
-                }, now)
-                e.last_published_priority = new
+            self._announce_priority(e, before, new, now, reason)
         self.queue.rebuild(items)
+
+    def _announce_priority(self, e, before, new, now, reason):
+        """Publish priority-changed when the priority moved at least the
+        configured threshold since the LAST ANNOUNCEMENT, or, when a reason is
+        given, when this update changed it at all. "old" is always the last
+        announced value, i.e. what listeners last saw."""
+        last = e.last_published_priority
+        if last is None:  # first value is announced by the Prioritized transition
+            e.last_published_priority = new
+            return
+        threshold = self.config["queue"]["priority_change_event_threshold"]
+        if abs(new - last) >= threshold or (reason and abs(new - before) >= 0.01):
+            why = reason or "re-score: waiting time, deadline, remaining need"
+            self.bus.publish("priority-changed", {
+                "id": e.id, "old": last, "new": new, "reason": why,
+                "message": f"{e.id} priority {last:.1f} -> {new:.1f} ({why})",
+            }, now)
+            e.last_published_priority = new
 
     def _on_conditions_changed(self, event):
         self.refresh_priorities(event.time, reason=event.type)
@@ -266,12 +290,22 @@ class CrisisResponseSystem:
             if e.unassigned_total() == 0 and not blocked:
                 continue
             notes = []
-            for trip in blocked:  # vehicle gives up and keeps cargo for its source hub
-                self.dispatcher._cancel_trip(trip, now, self.vehicles[trip.vehicle_id].location)
-                notes.append(f"{trip.vehicle_id} released, cargo returned to {trip.source_id} stock")
-            for cargo_id in [c.id for c in self.stranded.values() if c.emergency_id == e.id]:
-                notes.append(f"stranded cargo {cargo_id} abandoned")
-                del self.stranded[cargo_id]
+            for trip in blocked:  # the stuck vehicle gives up
+                here = self.vehicles[trip.vehicle_id].location
+                if trip.source_kind == "hub":
+                    # Food goes back into its hub's stock (simplification: we assume
+                    # it is returned once roads allow).
+                    self.dispatcher._cancel_trip(trip, now, here)
+                    notes.append(f"{trip.vehicle_id} released, cargo returned to {trip.source_id} stock")
+                else:
+                    # Rescued cargo belongs to THIS failed request only: written
+                    # off, not put back into a stranded pile nobody will collect.
+                    self.dispatcher._cancel_trip(trip, now, here, return_stock=False)
+                    notes.append(f"{trip.vehicle_id} released; {trip.units()} rescued units written off")
+            for cargo in [c for c in self.stranded.values() if c.emergency_id == e.id]:
+                if cargo.units() > 0:  # empty piles were already collected; just tidy them away
+                    notes.append(f"{cargo.units()} units in stranded cargo {cargo.id} could not be collected")
+                del self.stranded[cargo.id]
             missing = e.requested_total() - e.delivered_total()
             reason = e.last_wait_reason or "no resources or route"
             self.fail(e, now, f"Deadline {fmt_time(e.deadline)} + {grace} min grace passed; {missing} units could "
