@@ -187,11 +187,37 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
 ## 10. Live web dashboard ([ui/web.py](ui/web.py))
 - **Starting it:** `python3 main.py --demo --web` (or any `--dataset`), then open http://localhost:8765.
 - **What it shows:** an SVG map drawn from the dataset's lat/lng, or a circle layout if coordinates are missing. It shows closures, hubs with stock, vehicles and their remaining routes, the priority queue, emergencies and the live event log.
-- **Controls:** buttons tick or run the scenario, and clicking a road closes or reopens it.
+- **Live clock on the server.** A background thread advances the simulation every second while "live". Speeds are real time (1/60 simulated minute per second), 1x, 5x and 15x.
+  - Because the server owns the clock, every open tab is just a view of the same city.
+  - A change made in one tab (new emergency, weather, restock, closure) appears in all of them.
+  - The event stream also sends a small `clock` signal after every change, so pages redraw even in a quiet minute with no events.
+  - `--paused` starts it paused; Run to end pauses it first.
+- **Controls:**
+  - The City events menu and form produce exactly the JSON of one `disruptions.json` line and send it to `/disrupt`. That covers restock with any amounts, traffic ×1 to ×5, weather, road and intersection closures, and breakdown/repair.
+  - The details panel has the common one-click versions.
+  - Inputs live in a form that is not redrawn, because the details panel redraws every second in live mode and would wipe typing.
+- **Dataset explorer:** `GET /dataset` returns every place, hub, vehicle, intersection and road with ids, coordinates, `w`, current cost and status. The page shows them as searchable, sortable tables (CSV download), refreshed live while open.
 - **Standard library only:** `http.server` with `ThreadingHTTPServer`.
   - Live updates use **Server-Sent Events** (`/events`), not WebSocket. The standard library has no WebSocket server, and the page only needs server-to-browser updates. Button clicks are plain POST requests.
   - Each event carries its bus sequence number, so a reconnecting browser resumes exactly where it stopped.
 - **Thread safety:** each browser connection runs in its own thread, but the system is not thread-safe. Every access holds one lock (a `threading.Condition`), and the event streams sleep on that Condition until something changes.
+- **Page files:** the page is three plain files in `ui/static/` (HTML skeleton, CSS with colour tokens for light and dark mode, JavaScript in numbered sections). They contain no frameworks, fonts or CDN links, so the demo works offline and every line can be read. The server only serves those three named files (a whitelist), so no other file on disk can be requested.
+- **How the page stays live.**
+  - `/state` returns one JSON snapshot.
+  - Each event from `/events` adds a feed line and schedules a redraw (at most about six per second).
+  - Trucks are kept as the same SVG elements between redraws, so a CSS transition glides them to their new spot.
+  - The server sends each truck's position as "fraction `f` of the way from node A to node B".
+- **Actions** reuse the same code paths as files and the CLI.
+  - `/emergency` calls `submit_emergency`, the same validation, and dispatches at once.
+  - `/disrupt` calls `apply_disruption`.
+  - `/reset` rebuilds the scenario with `make_world()` from `main.py`.
+
+  The dashboard therefore cannot do anything the tested core cannot.
+- **Usability choices:**
+  - Every number can be explained: the priority breakdown and the timeline in the details panel.
+  - Bursts of events become one pop-up instead of a flood.
+  - Pop-ups only cover important events: new request, delivered, failed, re-routing, breakdown, stock-out, weather.
+  - Keyboard shortcuts, a reduced-motion setting, and colour plus text labels, so colour is never the only signal.
 
 ## 11. City conditions: weather, rush hour, traffic ([core/system.py](core/system.py), [loader/weather_loader.py](loader/weather_loader.py))
 - **One formula.** road cost = `w × terrain × (weather × rush hour) × local slowdown`.

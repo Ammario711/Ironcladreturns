@@ -46,7 +46,7 @@ python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 124 automated tests, a few seconds (no internet needed)
+python3 -m unittest discover -s tests -v   # 141 automated tests, about 10 seconds (no internet needed)
 ```
 
 ### Dataset 2 (zero code changes)
@@ -58,6 +58,24 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 - `--generate N --seed S` builds requests and disruptions from whatever places, roads and vehicles that dataset contains.
 - If Dataset 2 embeds `emergencies` or `disruptions` lists, they are loaded automatically.
 - To change speed factors, units or fuel for Dataset 2, copy [config/config.example.json](config/config.example.json), edit it, and pass `--config my.json`. The algorithm code does not change.
+
+### Live web dashboard
+Run `python3 main.py --demo --web` and open http://localhost:8765. It works with any dataset, needs no internet, and uses only the standard library on the server and plain HTML/CSS/JavaScript in the browser (`ui/static/`).
+- **Live city:** the server runs the city clock itself and starts immediately (add `--paused` to start paused).
+  - Every open browser tab shows the same city and updates by itself, every second.
+  - Anything one person changes appears in all tabs straight away.
+- **Controls:** Run live / Pause (Space), speed **Real time** (1 simulated minute per real minute), 1x, 5x or 15x, step +1 or +10 minutes, run to the end, and Reset to start the same scenario again.
+- **City events menu:** restock a food hub with any amounts, set traffic on any road (×1 to ×5, 1 = clear), change the weather, close or reopen a road or an intersection, and break down or repair a vehicle. It uses the same checks as a disruptions file.
+- **Dataset menu (D):** every place (POI), food hub, vehicle, intersection (node) and road (edge), with all their ids, lat/lng, km, `w`, current travel time, highway/terrain and live status.
+  - Tables are searchable and sortable, and can be downloaded as CSV.
+  - Clicking a row shows it on the map.
+  - The Overview shows the dataset's sources, disclosure, loader warnings and the weather and rush-hour settings.
+- **Map:** zoom with the scroll wheel and drag to pan. It shows trucks moving along their remaining routes, request pins coloured by state (pulsing when Delayed, Re-Routing or Failed), hubs with live stock, closed roads in red, jams in orange, and a weather effect.
+- **Details panel:** click any request, truck, hub, road, intersection or place.
+  - A request shows the full timestamped timeline, the lifecycle stepper, *why it has this priority* (all six score factors plus waiting time), and its vehicles.
+  - Trucks, hubs and roads have action buttons: breakdown/repair, restock, close/reopen, traffic jam.
+- **New emergency form (N):** checked by the same validation as files and the CLI. Errors appear next to the form, including "did you mean" for unknown places.
+- **Also:** KPI cards, a priority queue, fleet and hub lists, a filterable live activity feed, pop-up alerts, a light/dark theme and a phone layout.
 
 ### Weather, rush hour and traffic
 - **Real weather (Open-Meteo, free, no API key):** `python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run` replays a real snowy Toronto morning that is saved in the repo, so it works offline and gives the same result every time.
@@ -126,7 +144,8 @@ core/              algorithms, no dataset-specific code:
                    event_bus, disruptions, dispatcher, system (facade)
 loader/            dataset / config / input-file loading
 sim/               simulator + seeded scenario generator
-ui/                command-line dashboard (cli.py) + live web dashboard (web.py)
+ui/                command-line dashboard (cli.py) + web dashboard server (web.py)
+                   + ui/static/: the dashboard page (index.html, app.css, app.js)
 tests/             unittest suite + Dataset-2-style fixture
 DECISIONS.md       algorithms, data structures, complexity, trade-offs
 PROGRESS.md        build status, file map, known issues, next steps
@@ -143,7 +162,7 @@ The dataset's own disclosure says it is a generated simulation: an approximate d
 **Our own test data.** `samples/*.json` and `tests/fixtures/sparse_town.json` were written for this project (AI-assisted, see below). They are not official competition data.
 
 **Generative AI.**
-- **Claude (Anthropic, model *Claude Opus 5.5*, `claude-opus-5-5`)**, used via Claude Code on 2026-11-07, generated the initial draft of the modules, tests, sample scenarios, Open-Meteo weather snapshot integration, and documentation from the team's specification, and implemented Round-1 review fixes.
+- **Claude (Anthropic, model *Claude Opus 5.5*, `claude-opus-5-5`)**, used via Claude Code on 2026-11-07, generated the initial draft of the modules, tests, sample scenarios, Open-Meteo weather snapshot integration, and documentation from the team's specification, implemented Round-1 review fixes, and drafted the redesigned web dashboard (`ui/web.py`, `ui/static/`).
 - **Google Antigravity (model *Gemini*)**, used on 2026-11-07, performed two rounds of code review against the competition abstract and rulebook, merged city-conditions into `main`, removed redundant CLI commands, and implemented Round-2 bug fixes and regression tests (`Trip.retime` multi-change ETA math, rush-hour clock sync, `Simulator.advance`, coordinate/config/input guards).
 - The team manually refactored and reviewed the source files. This section and [PROGRESS.md](PROGRESS.md) retain the history of AI contributions and the team’s verification.
 - No AI tool was used to write presentation scripts.

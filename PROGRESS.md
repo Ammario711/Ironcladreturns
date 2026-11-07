@@ -1,13 +1,13 @@
 
 # PROGRESS: Ironcladreturns, Urban Food Crisis Response and Routing System
 
-**Last updated:** 2026-11-07. All 9 core steps, location suggestions, live web dashboard, fuller city timeline + Open-Meteo weather / rush hour / traffic (`feature/city-conditions`), and Round-1 + Round-2 review fixes are merged on `main`. **131 tests pass.** The demo runs cleanly.
+**Last updated:** 2026-11-07. All 9 core steps, location suggestions, live web dashboard, fuller city timeline + Open-Meteo weather / rush hour / traffic (`feature/city-conditions`), and Round-1 + Round-2 review fixes are merged on `main`. Branch `feature/dashboard-redesign` (PR #3) adds the redesigned web dashboard (`ui/static/`) with a server-run live clock, a City events menu and a Dataset explorer. **141 tests pass.** The demo runs cleanly.
 **Status:** active team integration & refinement on `main`. **Next:** final team review notes in the tracking table below, Dataset 2 config tuning when released, and `python3 make_zip.py` before submission.
 
 ## Resume here (teammate or another AI)
 1. Read this file, then [README.md](README.md) (how to run) and [DECISIONS.md](DECISIONS.md) (why it works this way).
 2. Python 3.10+, standard library only, nothing to install. Run every command from the project root.
-3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 131 tests OK.
+3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 141 tests OK.
 4. Demo: `python3 main.py --demo --run` (or `--quiet` for the report only, drop `--run` for the interactive CLI, or use `--web` for the browser dashboard at http://localhost:8765).
 5. Before submitting: `python3 make_zip.py` creates `Ironcladreturns_Programming_Code.zip`.
 
@@ -38,6 +38,8 @@ In progress: nothing.
 | Live web dashboard (+5 rubric points) | `ui/web.py`, `main.py --web` | stdlib `http.server` + Server-Sent Events; map, queue, emergencies, live events, tick/run buttons, click a road to close/reopen |
 | Fuller city timeline in the sample: every closure reopens, a 2nd breakdown (V7, cargo rescued) + repair, food-bank restocks (normal food only, so E8 still shows the cold shortage), a traffic collision that clears | `samples/disruptions.json` | City ends the morning back to normal (tested) |
 | Weather / rush hour / traffic incidents change road costs; ETAs of moving vehicles are recomputed; new trips route around jams | `core/graph.py`, `core/system.py`, `core/trips.py` (`retime`), `core/dispatcher.py`, `core/disruptions.py` | New `weather` / `traffic` disruptions, `conditions-changed` event, CLI `weather` / `traffic` commands, dashboard shows conditions |
+| Dashboard redesign: play/pause with speed, KPI cards, zoomable map with moving trucks and weather effects, click-anything details panel with actions, new-emergency form, filterable feed, pop-up alerts, reset, light/dark, phone layout | `ui/web.py` (server), `ui/static/index.html`, `app.css`, `app.js`, `main.py` (`make_world`) | Page moved out of the Python string into plain files; checked in the browser at desktop, phone, light and dark |
+| Dashboard live mode: the server runs the clock (real time, 1x, 5x, 15x; `--paused` to start paused); all tabs update every second; City events menu (restock with any amounts, traffic x1-x5, weather, road/intersection closures, breakdown/repair); Dataset explorer (all POIs, hubs, vehicles, nodes, edges with ids, lat/lng, w, live status; search, sort, CSV); clickable intersections | `ui/web.py` (`/play`, `/dataset`, clock thread, `clock` stream signal), `ui/static/*`, `main.py --paused` | Tested: live clock, play checks, dataset contents, clock signal |
 | Real weather from Open-Meteo (free, no key), downloaded once and replayed | `loader/weather_loader.py`, `main.py --fetch-weather / --weather`, `samples/weather/` | Real snowy Toronto morning (2025-02-16) saved; tests use a fake network |
 | Round-2 review fixes + CLI cleanup (Antigravity): removed redundant `EOF`/`exit` CLI commands (keeping Ctrl-D clean exit); exact `Trip.retime` across multiple speed changes (`edge_costs`); rush-hour synced in `set_clock` before scoring/startup; `Simulator.advance` works when `minutes < step_minutes`; Dataset 2 coord/IO guards in `dataset_loader`/`weather_loader`; comma-safe `location_from_text`; `traffic` factor >= 1, finite config validation, `--weather` midnight/undated start, and `id: ""` rejection | `ui/cli.py`, `core/trips.py`, `core/dispatcher.py`, `core/system.py`, `sim/simulator.py`, `core/disruptions.py`, `core/emergency.py`, `loader/*.py`, `main.py`, `tests/*` | Merged `feature/city-conditions` to `main`; 131 unit tests passing; standardized `# AI-assisted ...` headers across `.py` files |
 
@@ -102,7 +104,10 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `sim/simulator.py` | Fixed-step timeline runner + text report |
 | `sim/scenario_generator.py` | Seeded random scenario for ANY dataset (Dataset 2 demo) |
 | `ui/cli.py` | Interactive dashboard (`cmd.Cmd`), table/event formatting |
-| `ui/web.py` | Live web dashboard: `http.server`, `/state` JSON, `/events` Server-Sent Events, inline HTML/SVG/JS page |
+| `ui/web.py` | Dashboard server: `http.server`, `/state` JSON, `/events` Server-Sent Events, POST actions (tick, run, road, disrupt, emergency, reset) |
+| `ui/static/index.html` | Dashboard page skeleton |
+| `ui/static/app.css` | Dashboard styling: colour tokens (light/dark), layout, components, responsive, motion |
+| `ui/static/app.js` | Dashboard logic in 13 numbered sections: state, rendering, map, details panel, feed, form, playback, input |
 | `tests/helpers.py` | `make_system`, `request`, `check_invariants`, `run_until` |
 | `tests/test_loader_routing.py` | Loader robustness + routing |
 | `tests/test_input_scoring_queue.py` | Validation, scoring, queue, aging/starvation |
@@ -110,7 +115,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `tests/test_cli.py` | CLI add form: re-asking unknown locations (scripted input via unittest.mock) |
 | `tests/test_review_fixes.py` | One test (or more) per Gemini review fix |
 | `tests/test_conditions.py` | Weather/rush hour/traffic, ETA retiming, weather snapshot loader (fake network), sample city timeline |
-| `tests/test_web.py` | Starts the real dashboard server on a free port: page, state, tick, road toggle, event stream |
+| `tests/test_web.py` | Starts the real dashboard server on a free port: page files (whitelist), state, every action, reset, event stream |
 | `tests/test_scenarios.py` | End-to-end: closures, breakdowns, unreachable, simultaneous, Dataset-2 fixture, determinism |
 | `tests/fixtures/sparse_town.json` | Dataset-2-style fixture: string ids, terrain list, island node, bad records, extra keys |
 | `make_zip.py` | Builds `Ironcladreturns_Programming_Code.zip` |
@@ -122,7 +127,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 - One trip serves one emergency (no multi-stop tours). No refuelling. Vehicles stay where they delivered.
 - When a request fails, uncollected stranded cargo is written off. A blocked vehicle's hub cargo goes back to that hub's stock even though the vehicle may not physically get there.
 - ISO times: only the time of day is used (a scenario is one day; write later days as `HH:MM+1d`).
-- The web dashboard is for local use (binds to 127.0.0.1, no login).
+- The web dashboard is for local use (binds to 127.0.0.1, no login). The Reset button asks the browser for a confirmation. Browser-side JavaScript has no automated tests (checked by hand in the browser).
 - Weather/rush-hour factors are assumptions; vehicles already driving are not diverted around a new jam (only new trips avoid it).
 - The generic `priority-changed` event fires every ~17 minutes per waiting request (5-point threshold), so the event log is chatty in long scenarios.
 - The CLI `add` form does not let you edit or cancel an emergency after it is accepted.
@@ -149,4 +154,6 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | core/dispatcher.py | | | |
 | core/system.py | | | |
 | ui/web.py | | | |
+| ui/static/app.js | | | |
+| ui/static/app.css | | | |
 | (others) | | | |

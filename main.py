@@ -12,6 +12,7 @@ The dataset path is only an argument: Dataset 2 needs no code change.
 """
 
 import argparse
+import copy
 import os
 import re
 import sys
@@ -52,6 +53,8 @@ def build_parser():
     p.add_argument("--web", action="store_true",
                    help="live web dashboard (map, queue, events) instead of the text CLI")
     p.add_argument("--port", type=int, default=8765, help="port for --web (default 8765)")
+    p.add_argument("--paused", action="store_true",
+                   help="--web: start with the clock paused (default: the city runs live)")
     p.add_argument("--weather", metavar="FILE", help="replay a saved weather snapshot (see --fetch-weather)")
     p.add_argument("--fetch-weather", metavar="YYYY-MM-DD",
                    help="download that day's real hourly weather for the dataset's city from Open-Meteo "
@@ -103,10 +106,6 @@ def main(argv=None):
     for warning in dataset.warnings:
         print(f"  warning: {warning}")
 
-    # raise_handler_errors=False: in live use one failing subscriber must not stop the system
-    system = CrisisResponseSystem(dataset, config, bus=EventBus(raise_handler_errors=False))
-    sim = Simulator(system)
-
     # Inputs: embedded in the dataset (if any) + files + generated.
     emergency_files = list(args.emergencies) + ([SAMPLE_EMERGENCIES] if args.demo else [])
     disruption_files = list(args.disruptions) + ([SAMPLE_DISRUPTIONS] if args.demo else [])
@@ -142,15 +141,27 @@ def main(argv=None):
         except WeatherError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
-    for raw in emergencies:
-        sim.schedule_emergency(raw)
-    for raw in disruptions:
-        sim.schedule_disruption(raw)
+
+    def make_world():
+        """A fresh system + simulator with every input scheduled. Called once
+        now, and again by the dashboard's Reset button (the dataset is reloaded
+        because a run changes hub stock and vehicle positions)."""
+        # raise_handler_errors=False: in live use one failing subscriber must not stop the system
+        fresh = CrisisResponseSystem(load_dataset(args.dataset, config), config,
+                                     bus=EventBus(raise_handler_errors=False))
+        simulator = Simulator(fresh)
+        for raw in copy.deepcopy(emergencies):
+            simulator.schedule_emergency(raw)
+        for raw in copy.deepcopy(disruptions):
+            simulator.schedule_disruption(raw)
+        return fresh, simulator
+
+    system, sim = make_world()
     print(f"Scheduled {len(emergencies)} emergencies and {len(disruptions)} disruptions")
 
     if args.web:
         try:
-            Dashboard(system, sim).serve(port=args.port)
+            Dashboard(system, sim, make_world=make_world).serve(port=args.port, autoplay=not args.paused)
         except OSError as exc:  # e.g. the port is already in use
             print(f"ERROR: cannot start the dashboard on port {args.port}: {exc}", file=sys.stderr)
             return 2
