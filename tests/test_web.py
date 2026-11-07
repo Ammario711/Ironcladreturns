@@ -137,6 +137,15 @@ class WebDashboardTests(unittest.TestCase):
         self.assertEqual((state["clock"], state["run_id"]), ("08:00", old_run + 1))
         self.assertEqual(state["emergencies"], [])
 
+    def test_reset_goes_back_to_the_starting_mode(self):
+        self.dashboard.autoplay = True  # as if started with `--web` (live by default)
+        self.post("/run")  # finished: the live clock has stopped
+        self.assertFalse(self.state()["playing"])
+        self.post("/reset")
+        state = self.state()
+        self.assertEqual(state["clock"], "08:00")
+        self.assertTrue(state["playing"])  # live again, not stuck paused
+
     def test_reset_without_builder_is_refused(self):
         self.dashboard.make_world = None
         self.assertEqual(self.post("/reset")[0], 400)

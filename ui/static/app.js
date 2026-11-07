@@ -844,6 +844,29 @@ async function act(url, body) {
 /** Start or stop the SERVER's live clock (every open tab follows it). */
 const setPlaying = (on) => act(`/play?on=${on ? 1 : 0}`);
 const setSpeed = (key) => act(`/play?speed=${encodeURIComponent(key)}`);
+/** Reset asks for a SECOND click instead of a pop-up: embedded browsers and
+    kiosk/projector setups often block window.confirm(), which then silently
+    answers "no" and the button would seem broken. */
+let resetTimer = null;
+function onResetClick() {
+  const button = $("#reset-btn");
+  if (resetTimer === null) {  // first click: ask for confirmation for 4 seconds
+    button.classList.add("btn-danger");
+    button.innerHTML = `${icon("reset")}<span>Confirm?</span>`;  // short, so the button never moves
+    resetTimer = setTimeout(disarmReset, 4000);
+    return;
+  }
+  disarmReset();  // second click: do it
+  selection = null;
+  act("/reset");
+}
+function disarmReset() {
+  clearTimeout(resetTimer);
+  resetTimer = null;
+  const button = $("#reset-btn");
+  button.classList.remove("btn-danger");
+  button.innerHTML = `${icon("reset")}<span>Reset</span>`;
+}
 /** Buttons inside the drawer and lists carry data-action attributes. */
 function handleAction(el) {
   const d = el.dataset;
@@ -972,9 +995,7 @@ function initControls() {
   $("#step-1").addEventListener("click", () => act("/tick?minutes=1"));
   $("#step-10").addEventListener("click", () => act("/tick?minutes=10"));
   $("#run-btn").addEventListener("click", () => act("/run"));  // the server pauses the live clock first
-  $("#reset-btn").addEventListener("click", () => {
-    if (window.confirm("Restart the scenario from the beginning?")) { selection = null; act("/reset"); }
-  });
+  $("#reset-btn").addEventListener("click", onResetClick);
   $("#speed").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (b) setSpeed(b.dataset.speed);

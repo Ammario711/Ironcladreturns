@@ -71,6 +71,7 @@ class Dashboard:
         self.run_id = 1      # goes up on every reset, so browsers know to clear their log
         self.version = 0     # goes up on every change, so event streams can send "clock"
         self.playing = False # is the live clock running?
+        self.autoplay = False  # was the dashboard started live? (Reset returns to this)
         self.speed = "1"     # key of SPEEDS
         self.tick_seconds = tick_seconds
         self._stop = threading.Event()
@@ -87,7 +88,10 @@ class Dashboard:
         if self.make_world is None:
             return False, "Reset is not available (dashboard started without a scenario builder)"
         self._use(*self.make_world())
-        self.run_id += 1  # (the live clock keeps its play/pause setting)
+        self.run_id += 1
+        # Back to how the dashboard started: live again if it was started live,
+        # even if the clock stopped because the last run finished.
+        self.playing = self.autoplay
         return True, f"Scenario restarted at {fmt_time(self.system.now)}"
 
     # ------------------------------------------------------------ live clock
@@ -311,6 +315,7 @@ class Dashboard:
         """autoplay: start the live clock straight away (the city runs on its own)."""
         server = self.make_server(port, host)
         with self.changed:
+            self.autoplay = autoplay
             self.playing = autoplay and not self.sim.finished()
         print(f"Dashboard: open http://{host}:{server.server_port}/ in a browser (Ctrl-C to stop)")
         print("The city clock is " + ("running live." if self.playing else "paused: press Play in the page."))

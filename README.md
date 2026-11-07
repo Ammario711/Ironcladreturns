@@ -46,7 +46,7 @@ python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 141 automated tests, about 10 seconds (no internet needed)
+python3 -m unittest discover -s tests -v   # 142 automated tests, about 10 seconds (no internet needed)
 ```
 
 ### Dataset 2 (zero code changes)
@@ -64,7 +64,7 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 - **Live city:** the server runs the city clock itself and starts immediately (add `--paused` to start paused).
   - Every open browser tab shows the same city and updates by itself, every second.
   - Anything one person changes appears in all tabs straight away.
-- **Controls:** Run live / Pause (Space), speed **Real time** (1 simulated minute per real minute), 1x, 5x or 15x, step +1 or +10 minutes, run to the end, and Reset to start the same scenario again.
+- **Controls:** Run live / Pause (Space), speed **Real time** (1 simulated minute per real minute), 1x, 5x or 15x, step +1 or +10 minutes, run to the end, and Reset (click twice) to start the same scenario again, running live if the dashboard was started live.
 - **City events menu:** restock a food hub with any amounts, set traffic on any road (×1 to ×5, 1 = clear), change the weather, close or reopen a road or an intersection, and break down or repair a vehicle. It uses the same checks as a disruptions file.
 - **Dataset menu (D):** every place (POI), food hub, vehicle, intersection (node) and road (edge), with all their ids, lat/lng, km, `w`, current travel time, highway/terrain and live status.
   - Tables are searchable and sortable, and can be downloaded as CSV.

@@ -1,13 +1,13 @@
 
 # PROGRESS: Ironcladreturns, Urban Food Crisis Response and Routing System
 
-**Last updated:** 2026-11-07. All 9 core steps, location suggestions, live web dashboard, fuller city timeline + Open-Meteo weather / rush hour / traffic (`feature/city-conditions`), and Round-1 + Round-2 review fixes are merged on `main`. Branch `feature/dashboard-redesign` (PR #3) adds the redesigned web dashboard (`ui/static/`) with a server-run live clock, a City events menu and a Dataset explorer. **141 tests pass.** The demo runs cleanly.
+**Last updated:** 2026-11-07. All 9 core steps, location suggestions, live web dashboard, fuller city timeline + Open-Meteo weather / rush hour / traffic (`feature/city-conditions`), and Round-1 + Round-2 review fixes are merged on `main`. Branch `feature/dashboard-redesign` (PR #3) adds the redesigned web dashboard (`ui/static/`) with a server-run live clock, a City events menu and a Dataset explorer. **142 tests pass.** The demo runs cleanly.
 **Status:** active team integration & refinement on `main`. **Next:** final team review notes in the tracking table below, Dataset 2 config tuning when released, and `python3 make_zip.py` before submission.
 
 ## Resume here (teammate or another AI)
 1. Read this file, then [README.md](README.md) (how to run) and [DECISIONS.md](DECISIONS.md) (why it works this way).
 2. Python 3.10+, standard library only, nothing to install. Run every command from the project root.
-3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 141 tests OK.
+3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 142 tests OK.
 4. Demo: `python3 main.py --demo --run` (or `--quiet` for the report only, drop `--run` for the interactive CLI, or use `--web` for the browser dashboard at http://localhost:8765).
 5. Before submitting: `python3 make_zip.py` creates `Ironcladreturns_Programming_Code.zip`.
 
@@ -127,7 +127,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 - One trip serves one emergency (no multi-stop tours). No refuelling. Vehicles stay where they delivered.
 - When a request fails, uncollected stranded cargo is written off. A blocked vehicle's hub cargo goes back to that hub's stock even though the vehicle may not physically get there.
 - ISO times: only the time of day is used (a scenario is one day; write later days as `HH:MM+1d`).
-- The web dashboard is for local use (binds to 127.0.0.1, no login). The Reset button asks the browser for a confirmation. Browser-side JavaScript has no automated tests (checked by hand in the browser).
+- The web dashboard is for local use (binds to 127.0.0.1, no login). Reset asks for a second click instead of a browser pop-up (embedded and kiosk browsers block pop-ups), and returns to the starting live/paused mode. Browser-side JavaScript has no automated tests (checked by hand in the browser).
 - Weather/rush-hour factors are assumptions; vehicles already driving are not diverted around a new jam (only new trips avoid it).
 - The generic `priority-changed` event fires every ~17 minutes per waiting request (5-point threshold), so the event log is chatty in long scenarios.
 - The CLI `add` form does not let you edit or cancel an emergency after it is accepted.
