@@ -120,6 +120,10 @@ class CrisisCLI(cmd.Cmd):
         nodes = sorted(self.system.graph.closed_nodes, key=id_sort_key)
         if closed or nodes:
             print(f"Closed roads: {closed}  Closed intersections: {nodes}")
+        c = self.system.conditions()
+        slow = ", ".join(f"{e} x{f:g}" for e, f in sorted(c["slow_roads"].items(), key=lambda i: id_sort_key(i[0])))
+        print(f"Conditions: weather {c['weather']} x{c['weather_factor']:g}, rush hour x{c['rush_factor']:g} "
+              f"-> all roads x{c['factor']:.2f}" + (f"; slow roads: {slow}" if slow else ""))
 
     def do_queue(self, _arg):
         """queue : waiting emergencies in the order they will be served, with score breakdown"""
@@ -380,6 +384,23 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
             print("Usage: restock HUB NORMAL COLD")
             return
         self._disrupt({"type": "restock", "hub": parts[0], "normal": parts[1], "cold": parts[2], "reason": "manual"})
+
+    def do_weather(self, arg):
+        """weather CONDITION : set the weather, e.g. weather heavy_snow (see 'status' for the current one)"""
+        if not arg.strip():
+            names = ", ".join(self.system.config["conditions"]["weather_factors"])
+            print(f"Usage: weather CONDITION   ({names})")
+            return
+        self._disrupt({"type": "weather", "condition": arg.strip(), "reason": "manual"})
+
+    def do_traffic(self, arg):
+        """traffic EDGE FACTOR | traffic A B FACTOR : slow a road (2 = twice as slow, 1 = cleared)"""
+        parts = arg.split()
+        if len(parts) not in (2, 3):
+            print("Usage: traffic EDGE FACTOR   or   traffic A B FACTOR   (factor 1 clears it)")
+            return
+        target = self._road_target(" ".join(parts[:-1]))
+        self._disrupt({"type": "traffic", **target, "factor": parts[-1], "reason": "manual"})
 
     def do_load(self, arg):
         """load emergencies PATH | load disruptions PATH : schedule records from a JSON file"""

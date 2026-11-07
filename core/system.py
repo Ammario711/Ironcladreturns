@@ -29,7 +29,7 @@ from core.routing import shortest_path_tree
 from core.scoring import aging_bonus, compute_score, explain
 from core.state_machine import CrisisState as S, CrisisStateMachine
 from core.trips import BLOCKED, EN_ROUTE
-from core.utils import fmt_time, id_sort_key
+from core.utils import fmt_time, id_sort_key, parse_time
 
 
 class CrisisResponseSystem:
@@ -47,6 +47,11 @@ class CrisisResponseSystem:
         self.stranded = {}      # cargo id -> StrandedCargo
         self.rejected = []      # (raw input, [errors]) for the report
         self.now = 0.0
+        # City conditions. Road cost = w x weather factor x rush-hour factor
+        # (x a local slowdown on single roads). See apply_disruption and tick.
+        self.weather_condition = "clear"
+        self.weather_factor = config["conditions"]["weather_factors"].get("clear", 1.0)
+        self.rush_factor = 1.0
         self._trip_counter = 0
         self._cargo_counter = 0
         self._tree_cache = {}   # site node -> PathTree (valid for one graph.version)
@@ -61,8 +66,8 @@ class CrisisResponseSystem:
         # can fire DURING a dispatch cycle: that is safe, because the request
         # being matched has already been popped, and the rebuilt heap only
         # holds requests still waiting their turn in this same cycle.
-        for event_type in ("road-closed", "road-reopened", "vehicle-breakdown",
-                           "vehicle-repaired", "resource-restocked", "resource-depleted"):
+        for event_type in ("road-closed", "road-reopened", "vehicle-breakdown", "vehicle-repaired",
+                           "resource-restocked", "resource-depleted", "conditions-changed"):
             self.bus.subscribe(event_type, self._on_conditions_changed)
 
     # ================================================================ intake
@@ -170,14 +175,15 @@ class CrisisResponseSystem:
     def _announce_priority(self, e, before, new, now, reason):
         """Publish priority-changed when the priority moved at least the
         configured threshold since the LAST ANNOUNCEMENT, or, when a reason is
-        given, when this update changed it at all. "old" is always the last
+        given, when this update changed it visibly (>= 0.1). "old" is always the last
         announced value, i.e. what listeners last saw."""
         last = e.last_published_priority
         if last is None:  # first value is announced by the Prioritized transition
             e.last_published_priority = new
             return
         threshold = self.config["queue"]["priority_change_event_threshold"]
-        if abs(new - last) >= threshold or (reason and abs(new - before) >= 0.01):
+        # 0.1 = the smallest change visible when printed with one decimal
+        if abs(new - last) >= threshold or (reason and abs(new - before) >= 0.1):
             why = reason or "re-score: waiting time, deadline, remaining need"
             self.bus.publish("priority-changed", {
                 "id": e.id, "old": last, "new": new, "reason": why,
@@ -202,7 +208,8 @@ class CrisisResponseSystem:
         if isinstance(raw, Disruption):
             d = raw
         else:
-            d, errors = parse_disruption(raw, self.graph, self.vehicles, self.hubs, now=self.now)
+            d, errors = parse_disruption(raw, self.graph, self.vehicles, self.hubs, now=self.now,
+                                         weather_factors=self.config["conditions"]["weather_factors"])
             if errors:
                 return False, "Disruption rejected: " + "; ".join(errors)
         t, g = self.now, self.graph
@@ -252,7 +259,57 @@ class CrisisResponseSystem:
                 "hub": hub.id, "normal": d.normal, "cold": d.cold,
                 "message": f"Hub {hub.id} restocked +{d.normal} normal / +{d.cold} cold{why}"}, t)
             return True, f"Hub {hub.id} now has {hub.normal} normal / {hub.cold} cold"
+        if d.type == "weather":
+            if d.condition == self.weather_condition:
+                return True, f"No change: weather is already {d.condition}"
+            self.weather_condition, self.weather_factor = d.condition, d.factor
+            self._apply_condition_factor(f"Weather: {d.condition}{why}")
+            return True, f"Weather now {d.condition}: travel times x{self.weather_factor:g}"
+        if d.type == "traffic":
+            changed = [e for e in d.edges if g.set_edge_slowdown(e, d.factor)]
+            if not changed:
+                return True, f"No change: road(s) {d.edges} already at x{d.factor:g}"
+            state = "cleared" if abs(d.factor - 1.0) < 1e-9 else f"x{d.factor:g} slower"
+            labels = "; ".join(g.edge_label(e) for e in changed)
+            self.bus.publish("conditions-changed", {
+                "kind": "traffic", "edges": changed, "factor": d.factor,
+                "message": f"Traffic {state}: {labels}{why}"}, t)
+            return True, f"Traffic on road(s) {changed}: {state}{why}"
         return False, f"Unsupported disruption type {d.type}"
+
+    # ================================================================ city conditions
+    def rush_hour_factor(self, now):
+        """Travel-time factor from the configured rush hours at clock time `now` (1.0 if none)."""
+        time_of_day = now % (24 * 60)
+        for rush in self.config["conditions"]["rush_hours"]:
+            if parse_time(rush["start"]) <= time_of_day < parse_time(rush["end"]):
+                return float(rush["factor"])
+        return 1.0
+
+    def _update_rush_hour(self, now):
+        factor = self.rush_hour_factor(now)
+        if abs(factor - self.rush_factor) < 1e-9:
+            return
+        self.rush_factor = factor
+        if factor == 1.0:
+            self._apply_condition_factor("Rush hour over")
+        else:
+            self._apply_condition_factor(f"Rush hour: traffic x{factor:g}")
+
+    def _apply_condition_factor(self, message):
+        """Push weather x rush hour into every road's cost and tell everyone."""
+        total = self.weather_factor * self.rush_factor
+        if self.graph.set_condition_factor(total):
+            self.bus.publish("conditions-changed", {
+                "kind": "city", "weather": self.weather_condition, "weather_factor": self.weather_factor,
+                "rush_factor": self.rush_factor, "factor": total,
+                "message": f"{message} (all roads x{total:.2f})"}, self.now)
+
+    def conditions(self):
+        """Current conditions, for the CLI and the web dashboard."""
+        return {"weather": self.weather_condition, "weather_factor": self.weather_factor,
+                "rush_factor": self.rush_factor, "factor": self.graph.condition_factor,
+                "slow_roads": dict(self.graph.edge_slowdowns)}
 
     # ================================================================ clock
     def set_clock(self, now):
@@ -265,6 +322,7 @@ class CrisisResponseSystem:
     def tick(self, now):
         """One full update of the whole system at time `now`."""
         self.set_clock(now)
+        self._update_rush_hour(now)   # may slow every road (and update ETAs) before dispatching
         self._confirm_deliveries(now)
         self.refresh_priorities(now)
         self.dispatcher.dispatch_cycle(now)

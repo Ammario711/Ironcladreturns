@@ -7,8 +7,8 @@ Fixed time step (default 1 simulated minute). At each step t:
   2. apply disruptions scheduled at or before t   (world changes first)
   3. submit emergencies scheduled at or before t   (in file order)
   4. system.tick(t)                                (re-score, dispatch, fail)
-It stops when nothing is scheduled, every emergency is Resolved/Failed and
-no vehicle is moving, or after simulation.max_minutes.
+It stops when no emergency is still scheduled, every emergency is
+Resolved/Failed and no vehicle is moving, or after simulation.max_minutes.
 
 Nothing random happens here, so the same inputs give the same event log.
 """
@@ -100,8 +100,14 @@ class Simulator:
         s.tick(t)
 
     def finished(self):
+        """Nothing left that can change the outcome: no emergency still to come,
+        every emergency Resolved/Failed, and no vehicle moving. Scheduled
+        disruptions AFTER that (e.g. evening weather changes) do not keep the
+        simulation running."""
         s = self.system
-        return not self._pending and not self._undated and s.all_done() and not s.dispatcher.active_trips()
+        emergencies_to_come = any(item[3] == "emergency" for item in self._pending) or any(
+            kind == "emergency" for _order, kind, _raw in self._undated)
+        return not emergencies_to_come and s.all_done() and not s.dispatcher.active_trips()
 
     def run(self, until=None):
         """Run until finished (or until clock time `until`). Returns the end time.

@@ -39,6 +39,7 @@ class Dispatcher:
         system.bus.subscribe("road-closed", self.on_road_closed)
         system.bus.subscribe("road-reopened", self.on_road_reopened)
         system.bus.subscribe("vehicle-breakdown", self.on_vehicle_breakdown)
+        system.bus.subscribe("conditions-changed", self.on_conditions_changed)
 
     # ------------------------------------------------------------ queries
     def trips_for(self, emergency_id, active_only=True):
@@ -208,6 +209,24 @@ class Dispatcher:
             self._apply_new_plan(trip, now, None, route, vehicle, 0.0)
             self.settle_state(e, now, f"{event.payload['message']}: {trip.vehicle_id} can move again via "
                                       f"{route.describe(s.graph)}; ETA {fmt_time(trip.delivery_time)}")
+
+    def on_conditions_changed(self, event):
+        """Weather / rush hour / a traffic jam changed road costs: update the ETA
+        of every vehicle on the road. Routes are kept (they are still open);
+        NEW assignments automatically use the new costs."""
+        s, now = self.system, event.time
+        mcfg, threshold = s.config["matching"], s.config["conditions"]["eta_change_event_minutes"]
+        for trip in self.active_trips():
+            if trip.status != EN_ROUTE:
+                continue
+            old_eta = trip.delivery_time
+            trip.retime(s.graph, now, mcfg["load_minutes"], mcfg["unload_minutes"])
+            if abs(trip.delivery_time - old_eta) >= threshold:
+                s.bus.publish("route-updated", {
+                    "trip": trip.id, "vehicle": trip.vehicle_id, "emergency": trip.emergency_id,
+                    "status": "retimed", "path": list(trip.nodes), "eta": trip.delivery_time,
+                    "message": f"{trip.vehicle_id} -> {trip.emergency_id}: ETA {fmt_time(old_eta)} -> "
+                               f"{fmt_time(trip.delivery_time)} ({event.payload['message']})"}, now)
 
     def on_vehicle_breakdown(self, event):
         """Recover the food of a broken vehicle (the system already marked it BROKEN)."""

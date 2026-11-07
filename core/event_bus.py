@@ -18,8 +18,9 @@ an event; whoever cares subscribes. Who subscribes to what:
   system.apply_disruption        resource-restocked    system (re-score)
   state machine                  state-changed         CLI / log
   state machine                  crisis-resolved       CLI / log
+  system (weather/traffic/rush)  conditions-changed    dispatcher (update ETAs), system (re-score)
 
-The first seven are the required events; the last four are extras.
+The first seven are the required events; the last five are extras.
 
 Delivery is synchronous and in subscription order, so runs are fully
 deterministic. Every event is kept in `log` (the CLI "events" command and
@@ -33,7 +34,8 @@ REQUIRED_EVENTS = (
     "crisis-created", "priority-changed", "route-updated", "resource-depleted",
     "road-closed", "vehicle-breakdown", "crisis-resolved",
 )
-EXTRA_EVENTS = ("state-changed", "road-reopened", "vehicle-repaired", "resource-restocked")
+EXTRA_EVENTS = ("state-changed", "road-reopened", "vehicle-repaired", "resource-restocked",
+                "conditions-changed")
 EVENT_TYPES = REQUIRED_EVENTS + EXTRA_EVENTS
 WILDCARD = "*"  # subscribe to everything (loggers, dashboards)
 
