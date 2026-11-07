@@ -56,10 +56,12 @@ class Dashboard:
             "scheduled": len(self.sim.pending()),
             "last_seq": len(s.bus.log),
             "stats": s.stats(),
+            "conditions": {k: v for k, v in s.conditions().items() if k != "slow_roads"},
             "nodes": [{"id": n.id, "name": n.name, "lat": n.lat, "lng": n.lng, "closed": n.id in g.closed_nodes}
                       for n in g.nodes.values()],
             "edges": [{"id": e.id, "a": e.a, "b": e.b, "street": e.street, "closed": e.id in g.closed_edges,
-                       "minutes": round(g.edge_cost(e.id), 2)} for e in g.edges.values()],
+                       "slow": g.edge_slowdowns.get(e.id, 1.0), "minutes": round(g.edge_cost(e.id), 2)}
+                      for e in g.edges.values()],
             "places": [{"id": p.id, "name": p.name, "kind": p.kind, "node": p.node} for p in s.pois.values()],
             "hubs": [{"id": h.id, "name": h.name, "node": h.node, "normal": h.normal, "cold": h.cold}
                      for h in sorted(s.hubs.values(), key=lambda h: id_sort_key(h.id))],
@@ -247,7 +249,8 @@ PAGE = r"""<!doctype html>
     <h2>Road network</h2>
     <svg id="map" viewBox="0 0 1000 680" role="img" aria-label="Road map"></svg>
     <div class="legend">Square = hub (stock N/C) &middot; ring = emergency (colour = state) &middot;
-      dot = vehicle &middot; coloured line = vehicle's remaining route &middot; red dashed = closed.
+      dot = vehicle &middot; coloured line = vehicle's remaining route &middot; red dashed = closed &middot;
+      thick orange = traffic jam.
       Click a road to close or reopen it.</div>
   </section>
   <div class="side">
@@ -294,11 +297,12 @@ function drawMap() {
   for (const e of state.edges) {  // roads: visible line + wide invisible line that is easy to click
     const [x1, y1] = pos[e.a], [x2, y2] = pos[e.b];
     const style = e.closed ? 'stroke="var(--closed)" stroke-width="3" stroke-dasharray="8 6"'
-                           : 'stroke="var(--road)" stroke-width="2"';
+                : e.slow > 1 ? 'stroke="var(--warn)" stroke-width="5"'
+                : 'stroke="var(--road)" stroke-width="2"';
     out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${style}/>`);
     out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="14"
       style="cursor:pointer" onclick="post('/road?edge=' + encodeURIComponent(${esc(JSON.stringify(e.id))}))">
-      <title>edge ${esc(e.id)} ${esc(e.street)} (${e.minutes} min)${e.closed ? " CLOSED - click to reopen" : " - click to close"}</title></line>`);
+      <title>edge ${esc(e.id)} ${esc(e.street)} (${e.minutes} min${e.slow > 1 ? ", traffic x" + e.slow : ""})${e.closed ? " CLOSED - click to reopen" : " - click to close"}</title></line>`);
   }
   state.trips.forEach((t, i) => {  // each vehicle's remaining route
     if (t.path.length < 2) return;
@@ -355,13 +359,14 @@ function drawTables() {
 }
 
 function drawHeader() {
-  const st = state.stats;
+  const st = state.stats, c = state.conditions;
   document.getElementById("title").textContent = state.dataset;
   document.getElementById("clock").textContent = state.clock + (state.finished ? " (finished)" : "");
   document.getElementById("chips").innerHTML = [
     `${st.emergencies} emergencies`, `${st.units_delivered}/${st.units_requested} units delivered`,
     `stock ${st.stock_left_normal}N / ${st.stock_left_cold}C`, `${st.vehicles_busy} vehicles busy`,
-    `${st.vehicles_broken} broken`, `${state.scheduled} scheduled`].map(t => `<span>${esc(t)}</span>`).join("");
+    `${st.vehicles_broken} broken`, `${state.scheduled} scheduled`,
+    `weather ${c.weather} x${c.weather_factor}`, `rush hour x${c.rush_factor}`, `roads x${c.factor.toFixed(2)}`].map(t => `<span>${esc(t)}</span>`).join("");
 }
 
 async function refresh() {

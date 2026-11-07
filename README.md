@@ -35,7 +35,7 @@ Every change is logged with a timestamp and an explanation. Components talk thro
 The same code runs on any dataset with the competition file structure. The dataset path is a command-line argument.
 
 ## Requirements and dependencies
-- **Python 3.10 or newer.** Nothing to install: only the Python standard library is used. The modules used are `heapq`, `dataclasses`, `enum`, `json`, `argparse`, `cmd`, `shlex`, `random`, `re`, `math`, `collections`, `copy` and `difflib`. The web dashboard also uses `http.server`, `threading` and `urllib.parse`. The tests also use `unittest`, `unittest.mock`, `tempfile`, `os`, `io`, `http.client` and `urllib.request`.
+- **Python 3.10 or newer.** Nothing to install: only the Python standard library is used. The modules used are `heapq`, `dataclasses`, `enum`, `json`, `argparse`, `cmd`, `shlex`, `random`, `re`, `math`, `collections`, `copy` and `difflib`. The web dashboard also uses `http.server`, `threading` and `urllib.parse`. The optional weather download (`--fetch-weather`) uses `urllib.request`, `ssl` and `datetime`. The tests also use `unittest`, `unittest.mock`, `tempfile`, `os`, `io`, `http.client` and `urllib.request`.
 - No third-party libraries.
 
 ## How to run (from this folder)
@@ -46,7 +46,7 @@ python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 106 automated tests, a few seconds
+python3 -m unittest discover -s tests -v   # 124 automated tests, a few seconds (no internet needed)
 ```
 
 ### Dataset 2 (zero code changes)
@@ -58,6 +58,13 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 - `--generate N --seed S` builds requests and disruptions from whatever places, roads and vehicles that dataset contains.
 - If Dataset 2 embeds `emergencies` or `disruptions` lists, they are loaded automatically.
 - To change speed factors, units or fuel for Dataset 2, copy [config/config.example.json](config/config.example.json), edit it, and pass `--config my.json`. The algorithm code does not change.
+
+### Weather, rush hour and traffic
+- **Real weather (Open-Meteo, free, no API key):** `python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run` replays a real snowy Toronto morning that is saved in the repo, so it works offline and gives the same result every time.
+- **Any city and day:** `python3 main.py --dataset X --fetch-weather 2025-02-16 --run`. This downloads that day's hourly weather for the dataset's centre **once**, saves it to `samples/weather/`, and uses it.
+- **Rush hours:** `--config config/city_conditions.example.json` turns on typical weekday rush hours. The factors are team assumptions; tune them in the file.
+- **Traffic incidents:** `traffic` events in a disruptions file, or the `traffic` command in the CLI.
+- **What changes:** slower roads change ETAs, route choices for new trips, and the deadline part of each request's priority. Vehicles already on the road get updated ETAs.
 
 ### Interactive commands
 | Command | What it does |
@@ -74,6 +81,7 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 | `closenode 20` / `reopennode 20` | Close or reopen an intersection |
 | `breakdown V2` / `repair V2` | Vehicle breakdown (its cargo is reassigned) / repair |
 | `restock P1 50 20` | Add normal and cold stock to a hub |
+| `weather heavy_snow` / `traffic 38 2.5` | Change the weather (all roads slower) / slow one road (`traffic 38 1` clears it) |
 | `tick [min]` / `run [HH:MM]` | Advance the clock / run to the end (or to a time) |
 | `load emergencies FILE` | Schedule requests or disruptions from a file |
 | `live on/off`, `report`, `quit` | Toggle live events, print the summary, exit |
@@ -100,6 +108,8 @@ python3 main.py --dataset path/to/dataset2.json                          # inter
 - `node_closure` and `node_reopen`
 - `vehicle_breakdown` and `vehicle_repair`
 - `restock`, with `hub`, `normal` and `cold`
+- `weather`, with `condition` (clear, fog, drizzle, rain, heavy_rain, freezing_rain, snow, heavy_snow, storm)
+- `traffic`, with the same road fields as `road_closure` plus `factor` (2 = twice as slow, 1 = cleared)
 
 Every disruption has a `time` and an optional `reason`.
 
@@ -108,7 +118,8 @@ Every disruption has a `time` and an optional `reason`.
 main.py            entry point (CLI arguments)
 data/              OFFICIAL dataset (unchanged)
 samples/           OUR sample emergencies/disruptions (AI-generated, not official)
-config/            example config override
+                   + samples/weather/: saved real weather (Open-Meteo)
+config/            example config overrides (incl. rush hours)
 core/              algorithms, no dataset-specific code:
                    graph, routing (Dijkstra), emergency (validation), scoring,
                    priority_queue (heapq), matcher (greedy), trips, state_machine,
@@ -136,6 +147,8 @@ The dataset's own disclosure says it is a generated simulation: an approximate d
 - The team reviewed, tested and modified this draft. The table in [PROGRESS.md](PROGRESS.md) records who changed what. TODO: complete it before submission.
 - Gemini 4 Argon (Google), used in Google Antigravity on 2026-11-07, reviewed the draft and produced a list of bugs and requirement gaps. Claude implemented the fixes. Suggestions we chose not to follow are listed in PROGRESS.md, with reasons.
 - No AI tool was used to write presentation scripts.
+
+**Weather data.** Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0. The saved file is `samples/weather/toronto-downtown_2025-02-16.json`. Weather codes follow the WMO code table used by Open-Meteo. The weather and rush-hour travel-time factors are our own assumptions, not measured data.
 
 **Algorithms and references.**
 - E. W. Dijkstra, "A note on two problems in connexion with graphs", *Numerische Mathematik* 1 (1959), for shortest paths.

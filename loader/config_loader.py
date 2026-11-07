@@ -10,6 +10,8 @@ top of DEFAULT_CONFIG.
 import copy
 import json
 
+from core.utils import parse_time
+
 DEFAULT_CONFIG = {
     "scoring": {
         # Points per factor. They are normalised, so they do not have to add
@@ -76,6 +78,20 @@ DEFAULT_CONFIG = {
         "confirm_minutes": 5,      # Delivered -> Resolved after the site confirms
         "fail_grace_minutes": 30,  # how long past the deadline we keep trying
     },
+    "conditions": {
+        # Travel-time multipliers for weather (1.0 = normal roads). These are TEAM
+        # ASSUMPTIONS, not measurements: wet/snowy roads are slower. Tune them here.
+        "weather_factors": {
+            "clear": 1.0, "fog": 1.2, "drizzle": 1.1, "rain": 1.15, "heavy_rain": 1.3,
+            "freezing_rain": 1.6, "snow": 1.4, "heavy_snow": 1.7, "storm": 1.5,
+        },
+        # Rush hours: [{"start": "07:00", "end": "09:30", "factor": 1.3}, ...].
+        # Empty by default so the dataset's w is used unchanged; see
+        # config/city_conditions.example.json for a filled-in example.
+        "rush_hours": [],
+        # Publish route-updated when a vehicle's ETA moves at least this many minutes.
+        "eta_change_event_minutes": 1.0,
+    },
     "validation": {
         "known_crisis_types": [
             "supply_shortage", "power_outage", "flood", "fire", "storm",
@@ -124,6 +140,7 @@ NON_NEGATIVE_SETTINGS = [
     ("matching", "load_minutes"), ("matching", "unload_minutes"),
     ("fuel", "per_km"), ("fuel", "default_fuel"),
     ("lifecycle", "confirm_minutes"), ("lifecycle", "fail_grace_minutes"),
+    ("conditions", "eta_change_event_minutes"),
 ]
 
 
@@ -146,6 +163,17 @@ def validate_config(config):
             raise ConfigError(f"config routing.terrain_multipliers.{name} must be a number > 0 (got {factor!r})")
     if not config["scoring"]["weights"] or sum(config["scoring"]["weights"].values()) <= 0:
         raise ConfigError("config scoring.weights must contain at least one positive weight")
+    for name, factor in config["conditions"]["weather_factors"].items():
+        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor <= 0:
+            raise ConfigError(f"config conditions.weather_factors.{name} must be a number > 0 (got {factor!r})")
+    for i, rush in enumerate(config["conditions"]["rush_hours"]):
+        try:
+            start, end = parse_time(rush["start"]), parse_time(rush["end"])
+            factor = rush["factor"]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ConfigError(f"config conditions.rush_hours[{i}] needs start, end (HH:MM) and factor ({exc})") from None
+        if start >= end or isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor <= 0:
+            raise ConfigError(f"config conditions.rush_hours[{i}]: start must be before end and factor > 0")
 
 
 def apply_overrides(override):

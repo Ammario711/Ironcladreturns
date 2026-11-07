@@ -1,13 +1,13 @@
 
 # PROGRESS: Ironcladreturns, Urban Food Crisis Response and Routing System
 
-**Last updated:** 2026-11-07. All 9 draft steps are DONE, plus location suggestions and the fixes from the Gemini review, including a live web dashboard. Branch `fix/review-findings` (stacked on `feature/location-suggestions`). 106 tests pass. The demo runs.
+**Last updated:** 2026-11-07. All 9 draft steps are DONE, plus location suggestions and the fixes from the Gemini review, including a live web dashboard (merged to `main` in PR #1). Now on branch `feature/city-conditions`: a fuller city timeline plus weather / rush hour / traffic. 124 tests pass. The demo runs.
 **Status:** complete first draft (AI-generated). **Next:** team review, rewriting, and citations (see "Next steps").
 
 ## Resume here (teammate or another AI)
 1. Read this file, then [README.md](README.md) (how to run) and [DECISIONS.md](DECISIONS.md) (why it works this way).
 2. Python 3.10+, standard library only, nothing to install. Run every command from the project root.
-3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 106 tests OK.
+3. Sanity check (a few seconds): `python3 -m unittest discover -s tests` should report 124 tests OK.
 4. Demo: `python3 main.py --demo --run` (or `--quiet` for the report only, drop `--run` for the interactive CLI, or use `--web` for the browser dashboard at http://localhost:8765).
 5. Before submitting: `python3 make_zip.py` creates `Ironcladreturns_Programming_Code.zip`.
 
@@ -36,6 +36,15 @@ In progress: nothing.
 | Gemini review, matcher: cold phase picks the most cold on time; disconnected fleet gets an honest reason | `core/matcher.py` | Demo: E6 now delivered 09:22 instead of 09:30 |
 | Gemini review, scoring/system/simulator/CLI: slack includes load+unload and the travel cap when unreachable; `resource-depleted` re-scores; O(n) refresh; partial-assignment priority events; no double ticks; undated inputs start with the scenario; report N/A and every rejection; `tick`/`events`/`add` guards; future `submitted_at` scheduled | `core/scoring.py`, `core/system.py`, `sim/*.py`, `ui/cli.py` | |
 | Live web dashboard (+5 rubric points) | `ui/web.py`, `main.py --web` | stdlib `http.server` + Server-Sent Events; map, queue, emergencies, live events, tick/run buttons, click a road to close/reopen |
+| Fuller city timeline in the sample: every closure reopens, a 2nd breakdown (V7, cargo rescued) + repair, food-bank restocks (normal food only, so E8 still shows the cold shortage), a traffic collision that clears | `samples/disruptions.json` | City ends the morning back to normal (tested) |
+| Weather / rush hour / traffic incidents change road costs; ETAs of moving vehicles are recomputed; new trips route around jams | `core/graph.py`, `core/system.py`, `core/trips.py` (`retime`), `core/dispatcher.py`, `core/disruptions.py` | New `weather` / `traffic` disruptions, `conditions-changed` event, CLI `weather` / `traffic` commands, dashboard shows conditions |
+| Real weather from Open-Meteo (free, no key), downloaded once and replayed | `loader/weather_loader.py`, `main.py --fetch-weather / --weather`, `samples/weather/` | Real snowy Toronto morning (2025-02-16) saved; tests use a fake network |
+
+**Parts of the weather/traffic idea we changed (and why):**
+- *Live traffic API:* no free source works without an account and key, a key would sit in a public repo, and live data makes runs non-repeatable. We use rush hours (config) + `traffic` incident events instead.
+- *Live weather during a run:* replaced by a one-time download saved to a file, so it is repeatable and works offline.
+- *Re-Routing for slowdowns:* not used; Re-Routing stays for routes that become unavailable. Slowdowns update ETAs instead.
+- *Cold-food restocks:* left out on purpose, so E8 still shows the limited-stock case.
 
 **Gemini suggestions we did NOT follow (and why):**
 - *Leave PROGRESS.md out of the zip:* README points here for the AI-use table, which is part of our citation trail.
@@ -49,13 +58,14 @@ In progress: nothing.
 python3 main.py --demo --run                 # Dataset 1 + samples: event log + report
 python3 main.py --demo                       # interactive (help, tick 5, queue, trips, show E5, close 42, breakdown V2, run)
 python3 main.py --demo --web                 # browser dashboard at http://localhost:8765 (Ctrl-C to stop)
+python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --config config/city_conditions.example.json --run   # snow + rush hour
 python3 main.py --dataset other.json --generate 10 --run   # any dataset, e.g. Dataset 2
 python3 main.py --emergencies samples/invalid_emergencies.json --run --quiet   # validation demo
 python3 -m unittest discover -s tests -v     # tests
 python3 make_zip.py                          # submission zip
 ```
 Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 delivered).
-- E5 shows Re-Routing (King St closed).
+- E5 shows Re-Routing (King St closed), then truck V7 breaks down with 60 units and V10 collects the cargo (delivered 08:34).
 - E3 shows a reefer breakdown with its cargo collected by another reefer.
 - E6 is unreachable (Delayed) until Bloor reopens, then delivered 7 min late (09:22, deadline 09:15).
 
@@ -67,6 +77,8 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `samples/emergencies.json` | AI-GENERATED sample requests (8), not official |
 | `samples/disruptions.json` | AI-GENERATED sample disruptions, timed to hit active trips |
 | `samples/invalid_emergencies.json` | Broken requests to demo validation |
+| `samples/weather/toronto-downtown_2025-02-16.json` | Real hourly weather (Open-Meteo, CC BY 4.0), snowy morning |
+| `config/city_conditions.example.json` | Example `--config` with weekday rush hours (assumed factors) |
 | `config/config.example.json` | Example override file for `--config` |
 | `core/utils.py` | id normalisation, natural id sort, time parsing (HH:MM to minutes), haversine |
 | `core/graph.py` | Graph, Node, Edge; closures; `edge_cost` with terrain/highway factors; BFS `connected` |
@@ -84,6 +96,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `core/system.py` | CrisisResponseSystem facade: intake, priorities, disruptions, `tick`, stats |
 | `loader/config_loader.py` | DEFAULT_CONFIG (every tunable number, commented), `apply_overrides`, `validate_config` |
 | `loader/dataset_loader.py` | Tolerant dataset parser to Dataset (graph, pois, hubs, vehicles, warnings) |
+| `loader/weather_loader.py` | Open-Meteo download (once), snapshot save/load, WMO code to condition, weather events |
 | `loader/input_loader.py` | Reads emergency/disruption files (list or `{key: list}`) |
 | `sim/simulator.py` | Fixed-step timeline runner + text report |
 | `sim/scenario_generator.py` | Seeded random scenario for ANY dataset (Dataset 2 demo) |
@@ -95,6 +108,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 | `tests/test_matcher_states_events.py` | Matcher constraints, state table, event bus |
 | `tests/test_cli.py` | CLI add form: re-asking unknown locations (scripted input via unittest.mock) |
 | `tests/test_review_fixes.py` | One test (or more) per Gemini review fix |
+| `tests/test_conditions.py` | Weather/rush hour/traffic, ETA retiming, weather snapshot loader (fake network), sample city timeline |
 | `tests/test_web.py` | Starts the real dashboard server on a free port: page, state, tick, road toggle, event stream |
 | `tests/test_scenarios.py` | End-to-end: closures, breakdowns, unreachable, simultaneous, Dataset-2 fixture, determinism |
 | `tests/fixtures/sparse_town.json` | Dataset-2-style fixture: string ids, terrain list, island node, bad records, extra keys |
@@ -108,6 +122,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 - When a request fails, uncollected stranded cargo is written off. A blocked vehicle's hub cargo goes back to that hub's stock even though the vehicle may not physically get there.
 - ISO times: only the time of day is used (a scenario is one day; write later days as `HH:MM+1d`).
 - The web dashboard is for local use (binds to 127.0.0.1, no login).
+- Weather/rush-hour factors are assumptions; vehicles already driving are not diverted around a new jam (only new trips avoid it).
 - The generic `priority-changed` event fires every ~17 minutes per waiting request (5-point threshold), so the event log is chatty in long scenarios.
 - The CLI `add` form does not let you edit or cancel an emergency after it is accepted.
 - Not tested on Windows (only paths built with `os.path`, so it should work).

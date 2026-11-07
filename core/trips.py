@@ -94,6 +94,37 @@ class Trip:
         source = f"{self.source_id}" if self.source_kind == "hub" else f"cargo {self.source_id}"
         return f"{self.vehicle_id} carries {' + '.join(load)} from {source} (ETA {fmt_time(self.delivery_time)})"
 
+    def retime(self, graph, now, load_minutes, unload_minutes):
+        """Weather or traffic changed: recompute the arrival times still ahead
+        with TODAY'S road costs. The path stays the same (a slower road is
+        still usable, so this is not a Re-Routing).
+
+        The vehicle is between node i and node i+1. The share of that road it
+        still has to drive is scaled by the road's new cost; every later road
+        uses its new cost, plus loading time if the pickup is still ahead.
+        """
+        i = self.position_index(now)
+        if i >= len(self.edges):
+            return  # already at the site, unloading
+        # When does (did) the vehicle leave node i? After loading, if it is the pickup.
+        depart = self.pickup_time if i == self.pickup_index else self.times[i]
+        old_road = self.times[i + 1] - depart
+        if now <= depart or old_road <= 0:
+            clock = depart + graph.edge_cost(self.edges[i])  # has not left node i yet
+        else:
+            share_left = (self.times[i + 1] - now) / old_road
+            clock = now + share_left * graph.edge_cost(self.edges[i])
+        times = self.times[:i + 1] + [clock]
+        for j in range(i + 1, len(self.edges)):
+            if j == self.pickup_index:
+                clock += load_minutes  # still has to load at the hub
+            clock += graph.edge_cost(self.edges[j])
+            times.append(clock)
+        self.times = times
+        if self.pickup_index is not None and self.pickup_index > i:
+            self.pickup_time = times[self.pickup_index] + load_minutes
+        self.delivery_time = max(times[-1], self.pickup_time) + unload_minutes
+
     def apply_plan(self, graph, start_time, to_source, to_dest, load_minutes, unload_minutes):
         """Fill in nodes/edges/times from route legs.
 

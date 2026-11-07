@@ -45,7 +45,8 @@ class WebDashboardTests(unittest.TestCase):
         state = json.loads(self.get("/state"))
         self.assertEqual(state["clock"], "08:00")
         self.assertEqual(len(state["nodes"]), 48)
-        self.assertEqual(state["scheduled"], 17)
+        expected = len(load_emergencies_file(SAMPLE_EMERGENCIES)) + len(load_disruptions_file(SAMPLE_DISRUPTIONS))
+        self.assertEqual(state["scheduled"], expected)
 
     def test_tick_and_road_toggle(self):
         self.assertTrue(self.post("/tick?minutes=5")["ok"])

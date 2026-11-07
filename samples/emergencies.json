@@ -1,5 +1,5 @@
 {
-  "_note": ".",
+  "_note": "SAMPLE DATA (team-made, NOT official competition data; see README.md for citations). Times are HH:MM on the scenario day.",
   "emergencies": [
     {"id": "E1", "location": "P3", "crisis_type": "supply_shortage", "location_category": "hospital",
      "people_affected": 250, "food_normal": 80, "food_cold": 40, "refrigeration_required": true,

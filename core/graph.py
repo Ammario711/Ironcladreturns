@@ -55,7 +55,10 @@ class Graph:
         # Defaults are 1.0 so the dataset's w is used unchanged.
         self.terrain_multipliers = dict(terrain_multipliers or {})
         self.highway_multiplier = float(highway_multiplier)
-        self.version = 0           # bumped on every open/close change
+        # City conditions that change during the day (see core/system.py):
+        self.condition_factor = 1.0  # weather x rush hour, applies to EVERY road
+        self.edge_slowdowns = {}     # edge id -> factor for a local jam/incident
+        self.version = 0           # bumped on every change that affects routes or costs
 
     # ------------------------------------------------------------ building
     def add_node(self, node):
@@ -79,12 +82,35 @@ class Graph:
 
     # ------------------------------------------------------------ costs
     def edge_cost(self, edge_id):
-        """Travel time (minutes) for one edge after terrain/highway factors."""
+        """Travel time (minutes) for one edge RIGHT NOW:
+        w x terrain x highway x (weather and rush hour) x (local slowdown)."""
         edge = self.edges[edge_id]
         factor = self.terrain_multipliers.get(edge.terrain, 1.0)
         if edge.hwy:
             factor *= self.highway_multiplier
+        factor *= self.condition_factor * self.edge_slowdowns.get(edge_id, 1.0)
         return edge.w * factor
+
+    def set_condition_factor(self, factor):
+        """City-wide travel-time factor (weather x rush hour). True if it changed."""
+        if abs(factor - self.condition_factor) < 1e-9:
+            return False
+        self.condition_factor = factor
+        self.version += 1
+        return True
+
+    def set_edge_slowdown(self, edge_id, factor):
+        """Slow one road down (factor > 1); factor 1.0 clears it. True if it changed."""
+        if edge_id not in self.edges:
+            raise KeyError(f"unknown edge {edge_id!r}")
+        if abs(factor - self.edge_slowdowns.get(edge_id, 1.0)) < 1e-9:
+            return False
+        if abs(factor - 1.0) < 1e-9:
+            self.edge_slowdowns.pop(edge_id, None)
+        else:
+            self.edge_slowdowns[edge_id] = factor
+        self.version += 1
+        return True
 
     def open_neighbors(self, node_id, blocked_edges=(), include_closed_nodes=False):
         """Yield (neighbour id, edge id) for every usable road out of node_id.

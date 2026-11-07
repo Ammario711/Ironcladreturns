@@ -193,6 +193,27 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
   - Each event carries its bus sequence number, so a reconnecting browser resumes exactly where it stopped.
 - **Thread safety:** each browser connection runs in its own thread, but the system is not thread-safe. Every access holds one lock (a `threading.Condition`), and the event streams sleep on that Condition until something changes.
 
-## 11. What we would do with more time
+## 11. City conditions: weather, rush hour, traffic ([core/system.py](core/system.py), [loader/weather_loader.py](loader/weather_loader.py))
+- **One formula.** road cost = `w × terrain × (weather × rush hour) × local slowdown`.
+  - The weather and rush-hour product is `Graph.condition_factor`; local jams are in `Graph.edge_slowdowns`.
+  - Every change bumps `graph.version`, so cached travel times are recomputed.
+- **Where the numbers come from.**
+  - Weather factors (snow ×1.4, heavy snow ×1.7, ...) and rush hours are config values and **team assumptions**, not measurements.
+  - The weather itself is real: **Open-Meteo** (free, no API key, past and forecast hourly data by lat/lng). Each WMO weather code maps to one of our condition names.
+- **Why a saved snapshot and not a live call during a run.**
+  1. Repeatable: the same file gives the same result in tests and in front of the judges.
+  2. Works without internet.
+  3. No API key, so no secret in a public repo.
+
+  `--fetch-weather DATE` downloads once and saves; `--weather FILE` replays. Hours before the scenario start fold into one event at the start, and after that only *changes* become events.
+- **Why there is no live traffic API.** There is no free traffic data feed that works without an account and API key (TomTom, HERE and Google all need a key). It would also make runs non-repeatable. Traffic is therefore modelled as configurable rush hours plus `traffic` incident events. Swapping in a real feed later only means producing those same `traffic` events.
+- **Effect on decisions.**
+  - The matcher's ETAs, Dijkstra route choices for new trips, and the deadline-slack part of the score all use current costs, so priorities and "on time / LATE" predictions react to the weather.
+  - Vehicles already driving get their remaining arrival times recomputed (`Trip.retime`): the share of the current road still to drive is scaled, later roads use new costs, and loading time is kept. A `route-updated` event reports the new ETA.
+- **No Re-Routing for slowdowns.** A slow road is still usable, so the route is kept and the state does not change; Re-Routing stays reserved for a route that becomes unavailable. A jam can be made impassable with a road closure.
+- **HTTPS on macOS.** If Python cannot find certificates (common with python.org installs), the download retries with the operating system's certificate bundle. Verification is never switched off.
+
+## 12. What we would do with more time
+- Divert vehicles that are already driving around a new jam when it saves enough time (today only new trips avoid it).
 - Multi-stop tours, optimal assignment (min-cost flow) as an option, refuelling, and vehicles returning to base.
 - A* with a calibrated heuristic for much larger cities.

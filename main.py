@@ -5,6 +5,7 @@ Examples (run from the project folder):
   python3 main.py --demo --run                 # Dataset 1 + sample scenario, print everything
   python3 main.py --demo                       # same scenario, interactive CLI
   python3 main.py --demo --web                 # same scenario, live web dashboard (http://localhost:8765)
+  python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run   # real snowy morning
   python3 main.py --dataset path/to/dataset2.json --generate 10 --run
   python3 main.py --dataset X --emergencies E.json --disruptions D.json --run
 
@@ -13,6 +14,7 @@ The dataset path is only an argument: Dataset 2 needs no code change.
 
 import argparse
 import os
+import re
 import sys
 
 from core.event_bus import EventBus
@@ -21,6 +23,8 @@ from core.utils import parse_time
 from loader.config_loader import ConfigError, load_config
 from loader.dataset_loader import DatasetError, load_dataset
 from loader.input_loader import InputFileError, load_disruptions_file, load_emergencies_file
+from loader.weather_loader import (WeatherError, city_point, fetch_open_meteo, load_snapshot,
+                                   save_snapshot, weather_disruptions)
 from sim.scenario_generator import generate_scenario
 from sim.simulator import Simulator
 from ui.cli import CrisisCLI, format_event
@@ -29,6 +33,7 @@ from ui.web import Dashboard
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE_EMERGENCIES = os.path.join(HERE, "samples", "emergencies.json")
 SAMPLE_DISRUPTIONS = os.path.join(HERE, "samples", "disruptions.json")
+WEATHER_DIR = os.path.join(HERE, "samples", "weather")
 
 
 def build_parser():
@@ -48,7 +53,44 @@ def build_parser():
     p.add_argument("--web", action="store_true",
                    help="live web dashboard (map, queue, events) instead of the text CLI")
     p.add_argument("--port", type=int, default=8765, help="port for --web (default 8765)")
+    p.add_argument("--weather", metavar="FILE", help="replay a saved weather snapshot (see --fetch-weather)")
+    p.add_argument("--fetch-weather", metavar="YYYY-MM-DD",
+                   help="download that day's real hourly weather for the dataset's city from Open-Meteo "
+                        "(free, no key), save it under samples/weather/, and use it")
     return p
+
+
+def earliest_time(records, keys):
+    """Earliest time found in raw records (None if none): where the scenario starts."""
+    times = []
+    for raw in records:
+        if isinstance(raw, dict):
+            for key in keys:
+                try:
+                    times.append(parse_time(raw[key]))
+                    break
+                except (KeyError, ValueError):
+                    continue
+    return min(times) if times else None
+
+
+def weather_events(args, dataset, start):
+    """Weather disruptions from --fetch-weather (one download, then saved) or --weather (saved file)."""
+    if args.fetch_weather:
+        lat, lng = city_point(dataset)
+        snapshot = fetch_open_meteo(lat, lng, args.fetch_weather)
+        os.makedirs(WEATHER_DIR, exist_ok=True)
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", dataset.id)
+        path = os.path.join(WEATHER_DIR, f"{safe_id}_{args.fetch_weather}.json")
+        save_snapshot(snapshot, path)
+        shown = os.path.relpath(path)
+        print(f"Saved Open-Meteo weather to {shown} (replay it offline with --weather {shown})")
+    else:
+        snapshot = load_snapshot(args.weather)
+    events = weather_disruptions(snapshot, start)
+    print(f"Weather {snapshot.get('date', '')}: {len(events)} condition change(s): "
+          + ", ".join(f"{e['time']} {e['condition']}" for e in events))
+    return events
 
 
 def main(argv=None):
@@ -86,6 +128,15 @@ def main(argv=None):
         emergencies += gen_e
         disruptions += gen_d
         print(f"Generated {len(gen_e)} emergencies and {len(gen_d)} disruption events (seed {args.seed})")
+    if args.weather or args.fetch_weather:
+        start = earliest_time(emergencies, ("submitted_at", "submission_time", "submitted", "time"))
+        dis_start = earliest_time(disruptions, ("time", "at"))
+        start = min(t for t in (start, dis_start) if t is not None) if (start or dis_start) else None
+        try:
+            disruptions += weather_events(args, dataset, start)
+        except WeatherError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
     for raw in emergencies:
         sim.schedule_emergency(raw)
     for raw in disruptions:

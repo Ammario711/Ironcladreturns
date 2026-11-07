@@ -1,5 +1,5 @@
 {
-  "_note": ".",
+  "_note": "SAMPLE DATA (team-made, NOT official competition data; see README.md for citations): deliberately broken requests to demonstrate input validation.",
   "emergencies": [
     {"id": "BAD1", "location": "P99", "crisis_type": "flood", "location_category": "shelter",
      "people_affected": 10, "food_normal": 5, "severity": 3, "deadline": "09:00", "submitted_at": "08:00"},
