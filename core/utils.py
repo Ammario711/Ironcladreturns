@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Small helper functions shared by every module.
 
 Standard library only, so the core runs on any Python 3.10+ install.

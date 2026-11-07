@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """A Trip = one vehicle carrying food from one source to one emergency.
 
 Timeline model (kept simple on purpose):

@@ -145,7 +145,7 @@ The dataset's own disclosure says it is a generated simulation: an approximate d
 **Generative AI.**
 - **Claude (Anthropic, model *Claude Opus 5.5*, `claude-opus-5-5`)**, used via Claude Code on 2026-11-07, generated the initial draft of the modules, tests, sample scenarios, Open-Meteo weather snapshot integration, and documentation from the team's specification, and implemented Round-1 review fixes.
 - **Google Antigravity (model *Gemini*)**, used on 2026-11-07, performed two rounds of code review against the competition abstract and rulebook, merged city-conditions into `main`, removed redundant CLI commands, and implemented Round-2 bug fixes and regression tests (`Trip.retime` multi-change ETA math, rush-hour clock sync, `Simulator.advance`, coordinate/config/input guards).
-- Every Python source file carries an inline `# AI-assisted ...` citation comment at the top of the file, and Team Ironcladreturns reviewed, tested, and modified the codebase (see [PROGRESS.md](PROGRESS.md) for change history and design decisions).
+- The team manually refactored and reviewed the source files. This section and [PROGRESS.md](PROGRESS.md) retain the history of AI contributions and the team’s verification.
 - No AI tool was used to write presentation scripts.
 
 **Weather data.** Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0. The saved file is `samples/weather/toronto-downtown_2025-02-16.json`. Weather codes follow the WMO code table used by Open-Meteo. The weather and rush-hour travel-time factors are our own assumptions, not measured data.

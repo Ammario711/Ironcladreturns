@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Real weather for a real city, from Open-Meteo (free, no API key), saved
 to a file ONCE and replayed from that file.
 

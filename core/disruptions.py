@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Disruption events (not in the dataset; they come from a separate file,
 the CLI, the scenario generator, or a saved weather snapshot) and their validation.
 

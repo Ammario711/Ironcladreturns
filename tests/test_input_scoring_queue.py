@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Input validation, scoring, and the heap priority queue (aging + tie-break)."""
 
 import unittest

@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """City conditions (weather, rush hour, traffic jams), the Open-Meteo weather
 snapshot loader, and the fuller sample city timeline.
 

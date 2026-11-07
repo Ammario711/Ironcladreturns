@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """CrisisResponseSystem: the single object the CLI / simulator talk to.
 
 It wires the components together through the event bus:

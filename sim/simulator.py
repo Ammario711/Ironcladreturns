@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Scenario / disruption simulator: replays a timeline against the system.
 
 Fixed time step (default 1 simulated minute). At each step t:

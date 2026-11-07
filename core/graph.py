@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Weighted, undirected road graph with closable roads and intersections.
 
 Design notes (see DECISIONS.md for the full reasoning):

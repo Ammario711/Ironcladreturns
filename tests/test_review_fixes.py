@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Tests for the fixes made after the external (Gemini) code review.
 
 One class per area, in the same order as the review: input, loaders/config,

@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Dispatcher: owns the trips.
 
 * dispatch_cycle  - pops emergencies in priority order and asks the matcher

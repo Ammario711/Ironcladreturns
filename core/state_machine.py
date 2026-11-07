@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Crisis state machine: validated transitions, each logged with a
 timestamp and an explanation.
 

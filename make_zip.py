@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Build the submission zip: python3 make_zip.py
 
 Creates Ironcladreturns_Programming_Code.zip next to this file, containing

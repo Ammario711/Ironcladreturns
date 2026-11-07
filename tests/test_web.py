@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Web dashboard: starts the real HTTP server on a free port and talks to it."""
 
 import http.client

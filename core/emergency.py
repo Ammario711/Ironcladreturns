@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Emergency request model and input validation.
 
 validate_emergency() never raises on bad user input. It returns ALL the

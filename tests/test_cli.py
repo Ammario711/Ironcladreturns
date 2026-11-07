@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """CLI `add` form: unknown locations are re-asked with suggestions.
 
 input() is replaced by a list of scripted answers (unittest.mock), and the

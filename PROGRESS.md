@@ -130,7 +130,7 @@ Expected demo result: 7 Resolved and 1 Failed (E8: cold stock runs out, 210/220 
 
 ## Next steps (for the team)
 1. ~~Fill in the competitor names in README.md~~ DONE: Ammar, Haziq, Mihir, Daniel.
-2. **Review and verify** each file as a team, and fill in who reviewed/modified each module in the table below before final submission. Every `.py` file now carries an inline `# AI-assisted ...` citation comment referencing `README.md`.
+2. **Finish team review and verification** for each file, and fill in who reviewed/modified each module in the table below before final submission. The README documents the original AI contributions and review history; repetitive inline banners were removed after the team refactor.
 3. Re-tune the scoring weights and aging rate together (config only), and be ready to justify the numbers to judges.
 4. When Dataset 2 arrives, run `python3 main.py --dataset <file> --generate 10 --run` and read the loader warnings. Adjust `--config` only, not `/core`.
 5. ~~Optional stretch: live map dashboard~~ DONE: `python3 main.py --demo --web` (standard library, Server-Sent Events). Try it before the demo and decide whether to present it.

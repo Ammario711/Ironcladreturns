@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Live web dashboard, standard library only (http.server).
 
 Run:  python3 main.py --demo --web      then open http://localhost:8765

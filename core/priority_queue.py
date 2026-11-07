@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Dynamic max-priority queue for emergencies, built on heapq.
 
 heapq is a MIN-heap, so we store the priority negated. Each heap entry is

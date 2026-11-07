@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Load a city dataset JSON file (Dataset 1 = toronto-downtown.json).
 
 Robustness rules (the hidden tests check these):

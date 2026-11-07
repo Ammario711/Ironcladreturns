@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Supply-side data: hubs (food stock), vehicles, points of interest, and
 cargo left behind by a broken-down vehicle.
 

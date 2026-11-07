@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Seeded random scenario generator, works on ANY dataset.
 
 Why: our sample files name Toronto places (P3, edge 21...). Dataset 2 will

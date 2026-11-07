@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """End-to-end scenarios through the simulator (the "hidden test" style cases)."""
 
 import unittest

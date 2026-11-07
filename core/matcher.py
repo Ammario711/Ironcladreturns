@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Greedy resource matching: which hub + which vehicle serve an emergency.
 
 Greedy on two levels:

@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Interactive command-line dashboard (Python's built-in `cmd` module).
 
 Type `help` inside the program for the command list; every command's help

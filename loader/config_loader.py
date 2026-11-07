@@ -1,4 +1,3 @@
-# AI-assisted (Claude Opus 5.5, Google Antigravity); reviewed and modified by Team Ironcladreturns — see README.md.
 """Default configuration + optional JSON override file.
 
 Every tunable number lives here (not in /core) so the team can change
