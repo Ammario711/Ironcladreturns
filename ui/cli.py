@@ -41,7 +41,7 @@ def format_event(event):
 
 
 def parse_key_values(text):
-    """'location=P3 people=40' -> {'location': 'P3', 'people': '40'}"""
+    """'location=S1 people=40' -> {'location': 'S1', 'people': '40'}"""
     result = {}
     for token in shlex.split(text):
         if "=" not in token:
@@ -54,7 +54,7 @@ def parse_key_values(text):
 def location_from_text(text):
     """Typed location -> value the validator understands.
 
-    "43.65, -79.38" -> {"lat": ..., "lng": ...};  "33" -> 33;  "P3" -> "P3"
+    "45.5, -73.6" -> {"lat": ..., "lng": ...};  "33" -> 33;  "S1" -> "S1"
     """
     if "," in text:
         parts = text.split(",")
@@ -101,6 +101,19 @@ class CrisisCLI(cmd.Cmd):
         self.intro = (f"\nUrban Food Crisis Response - {system.dataset.name}\n"
                       f"Clock {fmt_time(self.sim.start_time())}. {len(self.sim.pending())} scheduled inputs. "
                       f"Type 'help' for commands, 'tick 10' to advance 10 minutes, 'run' to finish.\n")
+
+    def _example(self, hubs=False):
+        """A real id from the loaded dataset for help messages (no city is built in):
+        a delivery site (or a hub with hubs=True), else a node id."""
+        pois = sorted(self.system.pois.values(), key=lambda p: id_sort_key(p.id))
+        if hubs:
+            pois = [p for p in pois if p.id in self.system.hubs]
+        else:
+            pois = [p for p in pois if p.id not in self.system.hubs] or pois
+        if pois:
+            return str(pois[0].id)
+        nodes = sorted(self.system.graph.nodes, key=id_sort_key)
+        return str(nodes[0]) if nodes else "ID"
 
     def _print_live(self, event):
         if self.live:
@@ -198,10 +211,10 @@ class CrisisCLI(cmd.Cmd):
         print(table(["Hub", "Name", "Node", "Normal left/start", "Cold left/start"], rows))
 
     def do_route(self, arg):
-        """route FROM TO : fastest route + alternatives (place ids or node ids), e.g. route P0 P4"""
+        """route FROM TO : fastest route + alternatives between two place ids or node ids"""
         parts = arg.split()
         if len(parts) != 2:
-            print("Usage: route FROM TO   (e.g. route P0 P4  or  route 33 22)")
+            print(f"Usage: route FROM TO   (place or node ids, e.g. route {self._example(hubs=True)} {self._example()})")
             return
         g = self.system.graph
         nodes = []
@@ -241,7 +254,7 @@ class CrisisCLI(cmd.Cmd):
     # ------------------------------------------------------------ input
     def do_add(self, arg):
         """add : enter a new emergency (interactive form)
-add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_category=hospital people_affected=80 food_normal=40 severity=4 deadline=09:30"""
+add key=value ... : one line, e.g. add location=PLACE crisis_type=flood location_category=hospital people_affected=80 food_normal=40 severity=4 deadline=09:30"""
         if arg.strip():
             try:
                 raw = parse_key_values(arg)
@@ -299,14 +312,15 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
     def _ask_location(self):
         """Ask for the location until it is valid, helping when it is not.
 
-        Unknown text (e.g. "Toronto") gets the closest matches; 'y' accepts
+        Unknown text (e.g. a city name) gets the closest matches; 'y' accepts
         the first one. '?' (or a blank answer) lists the places. 'cancel' stops.
         Returns the location value, or None if the user cancelled.
         """
         g, pois = self.system.graph, self.system.pois
         best = None  # top suggestion from the last failed attempt, used by 'y'
         while True:
-            answer = input("  Location (place id like P3, place name, node id, or lat,lng; '?' lists places): ").strip()
+            answer = input(f"  Location (place id like {self._example()}, place name, node id, or lat,lng; "
+                           "'?' lists places): ").strip()
             if answer.lower() == "cancel":
                 return None
             if answer.lower() in ("y", "yes") and best is not None:
@@ -385,10 +399,10 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
         self._disrupt({"type": "vehicle_repair", "vehicle": arg.strip(), "reason": "manual"})
 
     def do_restock(self, arg):
-        """restock HUB NORMAL COLD : add stock to a hub, e.g. restock P1 50 20"""
+        """restock HUB NORMAL COLD : add stock to a hub ('hubs' lists them), e.g. restock HUB 50 20"""
         parts = arg.split()
         if len(parts) != 3:
-            print("Usage: restock HUB NORMAL COLD")
+            print(f"Usage: restock HUB NORMAL COLD   (e.g. restock {self._example(hubs=True)} 50 20)")
             return
         self._disrupt({"type": "restock", "hub": parts[0], "normal": parts[1], "cold": parts[2], "reason": "manual"})
 

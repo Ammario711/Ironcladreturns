@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from helpers import SAMPLE_DISRUPTIONS, SAMPLE_EMERGENCIES, make_system
+from helpers import TORONTO_DISRUPTIONS, TORONTO_EMERGENCIES, make_system
 from loader.input_loader import load_disruptions_file, load_emergencies_file
 from sim.simulator import Simulator
 from ui.web import Dashboard
@@ -18,9 +18,9 @@ def sample_world():
     """Fresh system + simulator with the sample scenario (also used by Reset)."""
     system = make_system()
     sim = Simulator(system)
-    for raw in load_emergencies_file(SAMPLE_EMERGENCIES):
+    for raw in load_emergencies_file(TORONTO_EMERGENCIES):
         sim.schedule_emergency(raw)
-    for raw in load_disruptions_file(SAMPLE_DISRUPTIONS):
+    for raw in load_disruptions_file(TORONTO_DISRUPTIONS):
         sim.schedule_disruption(raw)
     return system, sim
 
@@ -75,7 +75,7 @@ class WebDashboardTests(unittest.TestCase):
         state = self.state()
         self.assertEqual(state["clock"], "08:00")
         self.assertEqual(len(state["nodes"]), 48)
-        expected = len(load_emergencies_file(SAMPLE_EMERGENCIES)) + len(load_disruptions_file(SAMPLE_DISRUPTIONS))
+        expected = len(load_emergencies_file(TORONTO_EMERGENCIES)) + len(load_disruptions_file(TORONTO_DISRUPTIONS))
         self.assertEqual(state["scheduled"], expected)
         self.assertIn("heavy_snow", state["options"]["weather"])
         self.assertTrue(state["can_reset"])

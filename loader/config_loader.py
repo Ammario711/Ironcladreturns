@@ -103,6 +103,10 @@ DEFAULT_CONFIG = {
     "simulation": {
         "step_minutes": 1,          # clock resolution of the simulator
         "max_minutes": 2 * 24 * 60, # hard stop so a stuck scenario still ends
+        # Clock time the city starts at when no input gives a time: an empty
+        # live dashboard, generated scenarios and undated requests. Any input
+        # WITH a time wins (the clock starts at the earliest one). Also --start.
+        "start_time": "08:00",
     },
 }
 
@@ -205,6 +209,10 @@ def validate_config(config):
             raise ConfigError(f"config conditions.rush_hours[{i}] needs start, end (HH:MM) and factor ({exc})") from None
         if start >= end or factor <= 0:
             raise ConfigError(f"config conditions.rush_hours[{i}]: start must be before end and factor > 0")
+    try:
+        parse_time(config["simulation"].get("start_time"))
+    except ValueError as exc:
+        raise ConfigError(f"config simulation.start_time must be a clock time like \"08:00\" ({exc})") from None
 
 
 def apply_overrides(override):

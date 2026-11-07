@@ -174,6 +174,7 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
 5. Fuel is optional. It is reserved for the planned km, checked before any detour, refunded when a trip is cancelled or stopped, and there is no refuelling in this draft.
 7. Terrain speed factors: built-in defaults, then the dataset's `terrain` section (`multiplier` = cost factor, `speed_factor` = speed, so cost is 1/speed), then any `--config` values. An explicit config always wins.
 6. Units: one stock unit uses one capacity unit. Multipliers in config convert other units.
+8. Nothing about a particular city is built in. The dataset is a required argument. The clock starts at the earliest timed input, or at `simulation.start_time` (08:00, config or `--start`) when no input has a time. Help texts and form hints take their example ids from the loaded dataset. Hand-written scenarios name one city's ids, so they live in `tests/fixtures/` and are only read when named on the command line. The fictional `rehearsal_town.json` (Dataset 1 format, nothing else in common) proves a new dataset works end to end.
 
 ## 9. Complexity summary
 | Operation | Cost |
@@ -185,7 +186,8 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
 | Closure handling | O(active trips × route length) check + one Dijkstra per affected trip |
 
 ## 10. Live web dashboard ([ui/web.py](ui/web.py))
-- **Starting it:** `python3 main.py --demo --web` (or any `--dataset`), then open http://localhost:8765.
+- **Starting it:** `python3 main.py --dataset CITY.json --web`, then open http://localhost:8765.
+- **Empty city vs scenario:** if nothing is scheduled (no input files, no `--generate`), the city is never "finished": the live clock keeps running and waits for requests typed into the page. A scheduled scenario stops the clock when it has played out (`Dashboard.scenario_over`), and Reset starts it again.
 - **What it shows:** an SVG map drawn from the dataset's lat/lng, or a circle layout if coordinates are missing. It shows closures, hubs with stock, vehicles and their remaining routes, the priority queue, emergencies and the live event log.
 - **Live clock on the server.** A background thread advances the simulation every second while "live". Speeds are real time (1/60 simulated minute per second), 1x, 5x and 15x.
   - Because the server owns the clock, every open tab is just a view of the same city.
@@ -201,7 +203,7 @@ Priorities are rounded to 0.01 first, so floating-point noise does not hide a re
   - Live updates use **Server-Sent Events** (`/events`), not WebSocket. The standard library has no WebSocket server, and the page only needs server-to-browser updates. Button clicks are plain POST requests.
   - Each event carries its bus sequence number, so a reconnecting browser resumes exactly where it stopped.
 - **Thread safety:** each browser connection runs in its own thread, but the system is not thread-safe. Every access holds one lock (a `threading.Condition`), and the event streams sleep on that Condition until something changes.
-- **Page files:** the page is three plain files in `ui/static/` (HTML skeleton, CSS with colour tokens for light and dark mode, JavaScript in numbered sections). They contain no frameworks, fonts or CDN links, so the demo works offline and every line can be read. The server only serves those three named files (a whitelist), so no other file on disk can be requested.
+- **Page files:** the page is three plain files in `ui/static/` (HTML skeleton, CSS with colour tokens for light and dark mode, JavaScript in numbered sections). They contain no frameworks, fonts or CDN links, so the page works offline and every line can be read. The server only serves those three named files (a whitelist), so no other file on disk can be requested.
 - **How the page stays live.**
   - `/state` returns one JSON snapshot.
   - Each event from `/events` adds a feed line and schedules a redraw (at most about six per second).

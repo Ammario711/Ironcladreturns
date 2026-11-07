@@ -339,9 +339,11 @@ class CliGuardTests(unittest.TestCase):
         return out.getvalue()
 
     def test_tick_rejects_bad_minutes(self):
+        start = self.system.now  # empty city: the configured simulation.start_time
+        self.assertEqual(start, 480)
         for bad in ("nan", "inf", "0", "-1"):
             self.assertIn("must be more than 0", self.run_cli(f"tick {bad}"))
-        self.assertEqual(self.system.now, 0)
+        self.assertEqual(self.system.now, start)
 
     def test_events_zero_is_refused(self):
         self.assertIn("N must be 1 or more", self.run_cli("events 0"))

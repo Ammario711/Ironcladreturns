@@ -1,4 +1,4 @@
-/* Styling for the dashboard. No external fonts or libraries (the demo must
+/* Styling for the dashboard. No external fonts or libraries (the page must
    work offline). All colours are variables ("tokens") at the top, defined
    once for light mode and once for dark mode, so the look is consistent and
    easy to change. Sections: tokens, base, top bar, controls, layout, cards,

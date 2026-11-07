@@ -21,7 +21,7 @@ from core.routing import find_route
 from core.scoring import compute_score
 from core.state_machine import CrisisState as S
 from core.trips import Trip
-from helpers import (ROOT, SAMPLE_DISRUPTIONS, SAMPLE_EMERGENCIES, check_invariants, config, make_system,
+from helpers import (ROOT, TORONTO, TORONTO_DISRUPTIONS, TORONTO_EMERGENCIES, check_invariants, config, make_system,
                      request, run_until)
 from loader.config_loader import ConfigError, apply_overrides
 from loader.input_loader import load_disruptions_file, load_emergencies_file
@@ -30,7 +30,7 @@ from loader.weather_loader import (SYSTEM_CA_FILES, WeatherError, city_point, fe
 from sim.simulator import Simulator
 from ui.cli import CrisisCLI
 
-SNAPSHOT = os.path.join(ROOT, "samples", "weather", "toronto-downtown_2025-02-16.json")
+SNAPSHOT = os.path.join(ROOT, "tests", "fixtures", "toronto_weather_2025-02-16.json")
 DOUBLE = {"conditions": {"weather_factors": {"clear": 1.0, "double": 2.0}}}
 
 
@@ -225,7 +225,7 @@ class WeatherSnapshotTests(unittest.TestCase):
         with self.assertRaises(WeatherError):
             load_snapshot(os.path.join(ROOT, "nope.json"))
         with self.assertRaises(WeatherError):
-            load_snapshot(SAMPLE_EMERGENCIES)  # valid JSON, but no "hours"
+            load_snapshot(TORONTO_EMERGENCIES)  # valid JSON, but no "hours"
 
     def test_fetch_uses_one_request_and_builds_a_snapshot(self):
         fake = {"latitude": 43.69, "longitude": -79.41, "timezone": "America/Toronto",
@@ -261,7 +261,8 @@ class WeatherSnapshotTests(unittest.TestCase):
     def test_main_weather_flag_replays_the_snapshot(self):
         out = io.StringIO()
         with redirect_stdout(out):
-            code = main.main(["--demo", "--weather", SNAPSHOT, "--run", "--quiet"])
+            code = main.main(["--dataset", TORONTO, "--emergencies", TORONTO_EMERGENCIES, "--disruptions", TORONTO_DISRUPTIONS,
+                                "--weather", SNAPSHOT, "--run", "--quiet"])
         self.assertEqual(code, 0)
         self.assertIn("Weather 2025-02-16", out.getvalue())
         self.assertIn("Scenario report at 10:", out.getvalue())  # later weather does not keep it running
@@ -292,7 +293,7 @@ class WeatherSnapshotTests(unittest.TestCase):
                 json.dump([request(submitted_at="00:00", deadline="02:00")], handle)
             out = io.StringIO()
             with redirect_stdout(out):
-                code = main.main(["--emergencies", midnight, "--weather", SNAPSHOT, "--run", "--quiet"])
+                code = main.main(["--dataset", TORONTO, "--emergencies", midnight, "--weather", SNAPSHOT, "--run", "--quiet"])
             self.assertEqual(code, 0)
             self.assertIn("00:00", out.getvalue().splitlines()[1])  # Weather line starts at 00:00
 
@@ -301,7 +302,7 @@ class WeatherSnapshotTests(unittest.TestCase):
                 json.dump([request(submitted_at=None, deadline="09:30")], handle)
             out2 = io.StringIO()
             with redirect_stdout(out2), redirect_stderr(io.StringIO()):
-                code2 = main.main(["--emergencies", undated, "--weather", SNAPSHOT, "--run", "--quiet"])
+                code2 = main.main(["--dataset", TORONTO, "--emergencies", undated, "--weather", SNAPSHOT, "--run", "--quiet"])
             self.assertEqual(code2, 0)
             self.assertIn("08:00", out2.getvalue())
             self.assertIn("1 on time", out2.getvalue())
@@ -311,9 +312,9 @@ class CityTimelineTests(unittest.TestCase):
     def test_sample_morning_ends_with_city_back_to_normal(self):
         s = make_system()
         sim = Simulator(s)
-        for raw in load_emergencies_file(SAMPLE_EMERGENCIES):
+        for raw in load_emergencies_file(TORONTO_EMERGENCIES):
             sim.schedule_emergency(raw)
-        for raw in load_disruptions_file(SAMPLE_DISRUPTIONS):
+        for raw in load_disruptions_file(TORONTO_DISRUPTIONS):
             sim.schedule_disruption(raw)
         run_until(s, sim, 700, test=self)
         self.assertEqual(sim.input_errors, [])

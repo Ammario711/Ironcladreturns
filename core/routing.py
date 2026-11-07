@@ -31,7 +31,7 @@ class RouteResult:
     reason: str = ""                           # filled when found is False
 
     def describe(self, graph):
-        """Readable one-liner, e.g. 'Front St -> Bay St -> King St (6.2 min, 1.9 km)'."""
+        """Readable one-liner, e.g. 'Main St -> Oak Ave -> 2nd St (6.2 min, 1.9 km)'."""
         if not self.found:
             return f"ROUTE UNAVAILABLE from {self.source} to {self.target}: {self.reason}"
         if not self.edges:

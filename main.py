@@ -1,14 +1,16 @@
 """Entry point.
 
-Examples (run from the project folder):
-  python3 main.py --demo --run                 # Dataset 1 + sample scenario, print everything
-  python3 main.py --demo                       # same scenario, interactive CLI
-  python3 main.py --demo --web                 # same scenario, live web dashboard (http://localhost:8765)
-  python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run   # real snowy morning
-  python3 main.py --dataset path/to/dataset2.json --generate 10 --run
-  python3 main.py --dataset X --emergencies E.json --disruptions D.json --run
+Examples (run from the project folder; CITY.json is any dataset in the
+competition format, e.g. data/toronto-downtown.json):
+  python3 main.py --dataset CITY.json --web                  # live dashboard, add crises in the page
+  python3 main.py --dataset CITY.json                        # interactive text CLI
+  python3 main.py --dataset CITY.json --generate 10 --run    # random scenario from that city, full report
+  python3 main.py --dataset CITY.json --emergencies E.json --disruptions D.json --run
+  python3 main.py --dataset CITY.json --fetch-weather 2025-02-16 --web   # that day's real weather
 
-The dataset path is only an argument: Dataset 2 needs no code change.
+Nothing about a particular city is built in: the dataset is a required
+argument, every tunable number is in loader/config_loader.py (override
+with --config), and the start time is a setting (--start).
 """
 
 import argparse
@@ -20,7 +22,7 @@ import sys
 from core.event_bus import EventBus
 from core.system import CrisisResponseSystem
 from core.utils import parse_time
-from loader.config_loader import ConfigError, load_config
+from loader.config_loader import ConfigError, apply_overrides, deep_merge, load_config
 from loader.dataset_loader import DatasetError, load_dataset
 from loader.input_loader import InputFileError, load_disruptions_file, load_emergencies_file
 from loader.weather_loader import (WeatherError, city_point, fetch_open_meteo, load_snapshot,
@@ -30,19 +32,16 @@ from sim.simulator import Simulator
 from ui.cli import CrisisCLI, format_event
 from ui.web import Dashboard
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SAMPLE_EMERGENCIES = os.path.join(HERE, "samples", "emergencies.json")
-SAMPLE_DISRUPTIONS = os.path.join(HERE, "samples", "disruptions.json")
-WEATHER_DIR = os.path.join(HERE, "samples", "weather")
-
 
 def build_parser():
     p = argparse.ArgumentParser(description="Urban Food Crisis Response and Routing System (team Ironcladreturns)")
-    p.add_argument("--dataset", default=os.path.join(HERE, "data", "toronto-downtown.json"),
-                   help="city dataset JSON (default: Dataset 1, downtown Toronto)")
+    p.add_argument("--dataset", required=True, metavar="FILE",
+                   help="city dataset JSON in the competition format (required)")
     p.add_argument("--emergencies", action="append", default=[], help="emergency requests JSON (repeatable)")
     p.add_argument("--disruptions", action="append", default=[], help="disruption events JSON (repeatable)")
-    p.add_argument("--demo", action="store_true", help="also load samples/emergencies.json + samples/disruptions.json")
+    p.add_argument("--start", metavar="HH:MM",
+                   help="clock time the city starts at when no input has a time "
+                        "(default: config simulation.start_time)")
     p.add_argument("--generate", type=int, default=0, metavar="N", help="add N random emergencies (works on any dataset)")
     p.add_argument("--generate-disruptions", type=int, default=None, metavar="M", help="random disruptions (default N/2)")
     p.add_argument("--seed", type=int, default=42, help="random seed for --generate (same seed = same scenario)")
@@ -58,7 +57,7 @@ def build_parser():
     p.add_argument("--weather", metavar="FILE", help="replay a saved weather snapshot (see --fetch-weather)")
     p.add_argument("--fetch-weather", metavar="YYYY-MM-DD",
                    help="download that day's real hourly weather for the dataset's city from Open-Meteo "
-                        "(free, no key), save it under samples/weather/, and use it")
+                        "(free, no key), save it in the current folder, and use it")
     return p
 
 
@@ -82,7 +81,7 @@ def weather_events(args, dataset, start):
         lat, lng = city_point(dataset)
         snapshot = fetch_open_meteo(lat, lng, args.fetch_weather)
         safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", dataset.id)
-        path = os.path.join(WEATHER_DIR, f"{safe_id}_{args.fetch_weather}.json")
+        path = os.path.join(os.getcwd(), f"weather_{safe_id}_{args.fetch_weather}.json")
         save_snapshot(snapshot, path)
         shown = os.path.relpath(path)
         print(f"Saved Open-Meteo weather to {shown} (replay it offline with --weather {shown})")
@@ -98,30 +97,33 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
         config = load_config(args.config)
+        if args.start is not None:
+            config = apply_overrides(deep_merge(config["_overrides"], {"simulation": {"start_time": args.start}}))
         dataset = load_dataset(args.dataset, config)
     except (ConfigError, DatasetError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+    default_start = parse_time(config["simulation"]["start_time"])
     print(f"Loaded {dataset.summary()}")
     for warning in dataset.warnings:
         print(f"  warning: {warning}")
 
-    # Inputs: embedded in the dataset (if any) + files + generated.
-    emergency_files = list(args.emergencies) + ([SAMPLE_EMERGENCIES] if args.demo else [])
-    disruption_files = list(args.disruptions) + ([SAMPLE_DISRUPTIONS] if args.demo else [])
+    # Inputs: embedded in the dataset (if any) + files + generated. None of
+    # them is required: with no inputs the city starts empty and waits for
+    # requests typed into the CLI or the dashboard.
     try:
         emergencies = list(dataset.embedded_emergencies)
         disruptions = list(dataset.embedded_disruptions)
-        for path in emergency_files:
+        for path in args.emergencies:
             emergencies += load_emergencies_file(path)
-        for path in disruption_files:
+        for path in args.disruptions:
             disruptions += load_disruptions_file(path)
     except InputFileError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     if args.generate:
         n_dis = args.generate_disruptions if args.generate_disruptions is not None else args.generate // 2
-        gen_e, gen_d = generate_scenario(dataset, args.generate, n_dis, seed=args.seed)
+        gen_e, gen_d = generate_scenario(dataset, default_start, args.generate, n_dis, seed=args.seed)
         emergencies += gen_e
         disruptions += gen_d
         print(f"Generated {len(gen_e)} emergencies and {len(gen_d)} disruption events (seed {args.seed})")
@@ -129,13 +131,8 @@ def main(argv=None):
         em_start = earliest_time(emergencies, ("submitted_at", "submission_time", "submitted", "time"))
         dis_start = earliest_time(disruptions, ("time", "at"))
         candidates = [t for t in (em_start, dis_start) if t is not None]
-        if candidates:
-            start = min(candidates)
-        elif emergencies:  # undated emergencies: avoid forcing a 00:00 midnight start
-            earliest_due = earliest_time(emergencies, ("deadline", "due", "deliver_by"))
-            start = min(480.0, max(0.0, earliest_due - 60.0)) if earliest_due is not None else 480.0
-        else:
-            start = None
+        # Same rule as the simulator: the earliest timed input, else the configured start.
+        start = min(candidates) if candidates else default_start
         try:
             disruptions += weather_events(args, dataset, start)
         except WeatherError as exc:

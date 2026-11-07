@@ -7,7 +7,7 @@ Design notes (see DECISIONS.md for the full reasoning):
   deleting edges. Closing/reopening is O(1) and no data is ever lost.
 * `version` goes up on every closure change. Other modules use it to know
   when a cached route/distance is out of date.
-* Nothing here knows about Toronto: ids can be ints or strings, terrain
+* Nothing here is specific to one city: ids can be ints or strings, terrain
   and highway speed factors come from config.
 """
 

@@ -451,7 +451,11 @@ function queueHtml() {
   }).join("") + '<p class="muted" style="font-size:12px;padding:4px 10px">Highest priority first. Ties: earlier submission, then more people, then id.</p>';
 }
 function emergenciesHtml() {
-  if (!state.emergencies.length) return empty("pin", "No emergencies yet", "Press Play, or add one with New emergency.");
+  if (!state.emergencies.length) {
+    return empty("pin", "No emergencies yet", state.scheduled
+      ? "Press Run live: scheduled requests arrive on their own. Or add one with New emergency."
+      : "Nothing is scheduled. Add a request with New emergency (N).");
+  }
   const open = state.emergencies.filter((e) => !TERMINAL.has(e.state)).sort((a, b) => b.priority - a.priority);
   const closed = state.emergencies.filter((e) => TERMINAL.has(e.state));
   return [...open, ...closed].map((e) => {
@@ -781,6 +785,11 @@ function openModal(location = "") {
   setSeverity(Math.round((lo + hi) / 2));
   const later = Math.round(state.now + 60) % 1440;  // default deadline: one hour from now
   form.deadline.value = `${String(Math.floor(later / 60)).padStart(2, "0")}:${String(later % 60).padStart(2, "0")}`;
+  // The hint uses a real id from the loaded dataset: no city is built into the page.
+  const site = state.places.find((p) => !state.hubs.some((h) => same(h.id, p.id))) || state.places[0];
+  const example = site ? site.id : state.nodes.length ? state.nodes[0].id : null;
+  form.location.placeholder = example === null ? "Place id, place name, node id or lat,lng"
+    : `Place id (e.g. ${example}), place name, node id or lat,lng`;
   form.location.value = location;
   $("#form-messages").innerHTML = "";
   $("#modal").hidden = false;

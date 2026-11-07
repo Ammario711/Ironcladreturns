@@ -24,6 +24,8 @@ class Simulator:
         self._undated = []     # (order, kind, raw) with no usable time; see _place_undated
         self.input_errors = [] # (kind, raw, [messages]) for the report
         self.started = False
+        # Fallback start when no input has a time (see config simulation.start_time).
+        self.default_start = parse_time(system.config["simulation"]["start_time"])
 
     # ------------------------------------------------------------ scheduling
     def _time_of(self, raw, keys):
@@ -56,9 +58,17 @@ class Simulator:
         self._pending.append([max(t, self.system.now), order, self._seq, kind, raw])
         self._pending.sort(key=lambda item: item[:3])
 
+    def _untouched(self):
+        """True while nothing has happened yet: clock never set, no events."""
+        return self.system.now == 0 and not any(
+            ev.type != "conditions-changed" for ev in self.system.bus.log)
+
     def _place_undated(self):
         if self._undated:
-            start = min((item[0] for item in self._pending), default=self.system.now)
+            # Undated inputs happen when the scenario starts: the earliest timed
+            # input, else the configured start time (or now, if the clock moved).
+            fallback = self.default_start if self._untouched() else self.system.now
+            start = min((item[0] for item in self._pending), default=fallback)
             undated, self._undated = self._undated, []
             for order, kind, raw in undated:
                 self._push(start, order, kind, raw)
@@ -69,14 +79,13 @@ class Simulator:
 
     # ------------------------------------------------------------ running
     def start_time(self):
-        """Where the clock starts: jump to the first scheduled input, but only
-        if nothing has happened yet (so a request typed in at 00:00 is not skipped)."""
+        """Where the clock starts: the first scheduled input, or the configured
+        start time when nothing has a time (e.g. an empty live city). Only if
+        nothing has happened yet, so a request typed in at 00:00 is not skipped."""
         if not self.started:
             self._place_undated()
-            nothing_yet = self.system.now == 0 and not any(
-                ev.type != "conditions-changed" for ev in self.system.bus.log)
-            if self._pending and nothing_yet:
-                return float(int(self._pending[0][0]))
+            if self._untouched():
+                return float(int(self._pending[0][0])) if self._pending else self.default_start
         return self.system.now
 
     def step_to(self, t):

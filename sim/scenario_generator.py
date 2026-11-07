@@ -1,9 +1,9 @@
 """Seeded random scenario generator, works on ANY dataset.
 
-Why: our sample files name Toronto places (P3, edge 21...). Dataset 2 will
-have different ids, so for a Dataset 2 demo we generate requests and
-disruptions from whatever that dataset contains. Same dataset + same seed
-gives exactly the same scenario (random.Random(seed), sorted inputs).
+Why: hand-written input files name one city's places and roads. A new
+dataset has different ids, so we generate requests and disruptions from
+whatever that dataset contains. Same dataset + same seed gives exactly the
+same scenario (random.Random(seed), sorted inputs).
 """
 
 import random
@@ -13,8 +13,10 @@ from core.utils import fmt_time, id_sort_key, parse_time
 SITE_CATEGORIES = ("hospital", "shelter", "community", "school", "senior_home")
 
 
-def generate_scenario(dataset, n_emergencies=8, n_disruptions=4, seed=42, start_minutes=480, spread_minutes=90):
-    """Return (emergencies, disruptions) as raw dicts, ready for the simulator."""
+def generate_scenario(dataset, start_minutes, n_emergencies=8, n_disruptions=4, seed=42, spread_minutes=90):
+    """Return (emergencies, disruptions) as raw dicts, ready for the simulator.
+    start_minutes: clock time of the first request (main.py passes the
+    configured simulation.start_time, so nothing here is hard-coded)."""
     rng = random.Random(seed)
     graph = dataset.graph
     hub_nodes = {h.node for h in dataset.hubs.values()}

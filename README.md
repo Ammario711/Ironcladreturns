@@ -39,29 +39,36 @@ The same code runs on any dataset with the competition file structure. The datas
 - No third-party libraries.
 
 ## How to run (from this folder)
+The dataset is a **required argument**: nothing about a particular city is built into the program. `CITY.json` below is any dataset in the competition format, for example the official [data/toronto-downtown.json](data/toronto-downtown.json) or Dataset 2.
 ```
-python3 --version                       # must be 3.10+
-python3 main.py --demo --run            # Dataset 1 + sample scenario, prints the event log and a final report
-python3 main.py --demo --run --quiet    # same, report only
-python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
-python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
-python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 142 automated tests, about 10 seconds (no internet needed)
+python3 --version                                      # must be 3.10+
+python3 main.py --dataset CITY.json --web              # live web dashboard: open http://localhost:8765
+python3 main.py --dataset CITY.json                    # interactive CLI (type 'help')
+python3 main.py --dataset CITY.json --generate 10 --run          # random but repeatable scenario, event log + report
+python3 main.py --dataset CITY.json --emergencies E.json --disruptions D.json --run
+python3 -m unittest discover -s tests -v               # 153 automated tests, about 12 seconds (no internet needed)
+```
+- **No input files needed.** With only `--dataset`, the city starts empty at the configured start time and waits for requests typed into the dashboard or CLI.
+- `--generate N --seed S` builds requests and disruptions from whatever places, roads and vehicles that dataset contains.
+- `--start HH:MM` sets the clock time the city starts at when no input has a time (default `simulation.start_time` = 08:00 in the config). Inputs with a time always win: the clock starts at the earliest one.
+- If a dataset embeds `emergencies` or `disruptions` lists, they are loaded automatically.
+- To change speed factors, units or fuel for a dataset, copy [config/config.example.json](config/config.example.json), edit it, and pass `--config my.json`. The algorithm code does not change.
+
+### A new dataset (zero code changes)
+[tests/fixtures/rehearsal_town.json](tests/fixtures/rehearsal_town.json) is a **fictional** town written in exactly the Dataset 1 format but sharing nothing else with it: different ids (nodes from 101 with gaps, roads from 1000, places H1/S1, trucks T01), highways, rural and gravel roads, and a one-bridge island. `tests/test_new_dataset.py` runs every feature against it: loading, routing, a generated scenario, input files, the batch run, the CLI, and the live dashboard with no scenario. To rehearse Dataset 2 day by hand:
+```
+python3 main.py --dataset tests/fixtures/rehearsal_town.json --web
 ```
 
-### Dataset 2 (zero code changes)
+### Dataset 1 test scenario
+The tests use a hand-written Toronto morning (8 requests and a full timeline of disruptions). It only fits Dataset 1, because it names Toronto ids, so it lives with the tests rather than in the program. To watch it:
 ```
-python3 main.py --dataset path/to/dataset2.json --generate 10 --run      # random but repeatable scenario (seed 42)
-python3 main.py --dataset path/to/dataset2.json --emergencies E.json --disruptions D.json --run
-python3 main.py --dataset path/to/dataset2.json                          # interactive
+python3 main.py --dataset data/toronto-downtown.json --emergencies tests/fixtures/toronto_emergencies.json --disruptions tests/fixtures/toronto_disruptions.json --web
 ```
-- `--generate N --seed S` builds requests and disruptions from whatever places, roads and vehicles that dataset contains.
-- If Dataset 2 embeds `emergencies` or `disruptions` lists, they are loaded automatically.
-- To change speed factors, units or fuel for Dataset 2, copy [config/config.example.json](config/config.example.json), edit it, and pass `--config my.json`. The algorithm code does not change.
 
 ### Live web dashboard
-Run `python3 main.py --demo --web` and open http://localhost:8765. It works with any dataset, needs no internet, and uses only the standard library on the server and plain HTML/CSS/JavaScript in the browser (`ui/static/`).
-- **Live city:** the server runs the city clock itself and starts immediately (add `--paused` to start paused).
+Run `python3 main.py --dataset CITY.json --web` and open http://localhost:8765. It works with any dataset, needs no internet, and uses only the standard library on the server and plain HTML/CSS/JavaScript in the browser (`ui/static/`).
+- **Live city:** the server runs the city clock itself and starts immediately (add `--paused` to start paused). A city started with nothing scheduled keeps running and waits for requests. A scheduled scenario stops the clock when it has played out.
   - Every open browser tab shows the same city and updates by itself, every second.
   - Anything one person changes appears in all tabs straight away.
 - **Controls:** Run live / Pause (Space), speed **Real time** (1 simulated minute per real minute), 1x, 5x or 15x, step +1 or +10 minutes, run to the end, and Reset (click twice) to start the same scenario again, running live if the dashboard was started live.
@@ -78,8 +85,8 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 - **Also:** KPI cards, a priority queue, fleet and hub lists, a filterable live activity feed, pop-up alerts, a light/dark theme and a phone layout.
 
 ### Weather, rush hour and traffic
-- **Real weather (Open-Meteo, free, no API key):** `python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run` replays a real snowy Toronto morning that is saved in the repo, so it works offline and gives the same result every time.
-- **Any city and day:** `python3 main.py --dataset X --fetch-weather 2025-02-16 --run`. This downloads that day's hourly weather for the dataset's centre **once**, saves it to `samples/weather/`, and uses it.
+- **Any city and day (Open-Meteo, free, no API key):** `python3 main.py --dataset CITY.json --fetch-weather 2025-02-16 --web`. This downloads that day's hourly weather for the dataset's centre **once**, saves it in the current folder as `weather_<dataset id>_<date>.json`, and uses it.
+- **Replay a saved day offline:** `--weather weather_<dataset id>_<date>.json` gives the same result every time. The tests replay a real snowy Toronto morning saved in [tests/fixtures/toronto_weather_2025-02-16.json](tests/fixtures/toronto_weather_2025-02-16.json).
 - **Rush hours:** `--config config/city_conditions.example.json` turns on typical weekday rush hours. The factors are team assumptions; tune them in the file.
 - **Traffic incidents:** `traffic` events in a disruptions file, or the `traffic` command in the CLI.
 - **What changes:** slower roads change ETAs, route choices for new trips, and the deadline part of each request's priority. Vehicles already on the road get updated ETAs.
@@ -92,9 +99,9 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 | `list` / `show E3` | All emergencies / one emergency's details, trips and timestamped history |
 | `trips` | Vehicles on the road: load, route, ETA |
 | `vehicles` / `hubs` | Fleet table / stock left at each hub |
-| `route P0 P4` | Fastest route plus alternatives between places or nodes |
+| `route FROM TO` | Fastest route plus alternatives between places or nodes |
 | `events [N] [type]` | Recent events from the event bus |
-| `add` or `add key=value ...` | New emergency (guided form or one line); shows every validation error. In the form, an unknown location (e.g. "Toronto") is asked again with the closest matches (`y` accepts the first, `?` lists places, `cancel` stops) |
+| `add` or `add key=value ...` | New emergency (guided form or one line); shows every validation error. In the form, an unknown location (e.g. a city name or a typo) is asked again with the closest matches (`y` accepts the first, `?` lists places, `cancel` stops) |
 | `close 42` / `close 11 12` / `reopen ...` | Close or reopen a road by edge id or by its two end nodes |
 | `closenode 20` / `reopennode 20` | Close or reopen an intersection |
 | `breakdown V2` / `repair V2` | Vehicle breakdown (its cargo is reassigned) / repair |
@@ -107,11 +114,11 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 ## Input formats
 **Dataset** ([data/toronto-downtown.json](data/toronto-downtown.json)): nodes, edges, pois, hubs and trucks, in the official structure. Unknown keys are ignored with a warning. Missing optional fields get defaults from config, and bad records are skipped with a message saying which record and why.
 
-**Emergencies** (see [samples/emergencies.json](samples/emergencies.json)). The file can be a list, or an object with an `emergencies` list.
+**Emergencies** (example: [tests/fixtures/toronto_emergencies.json](tests/fixtures/toronto_emergencies.json)). The file can be a list, or an object with an `emergencies` list.
 
 | Field | Rule |
 |---|---|
-| `location` | place id (`"P3"`), node id (`33`), place name, or `{"lat": .., "lng": ..}` (nearest node) |
+| `location` | place id (text), node id (number), place name, or `{"lat": .., "lng": ..}` (nearest node). Typos get "did you mean" suggestions |
 | `crisis_type` | required text (unknown types are accepted with a warning) |
 | `location_category` | hospital, senior_home, shelter, school, community or other. Taken from the place if omitted |
 | `people_affected` | whole number of at least 1 |
@@ -121,7 +128,7 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 | `severity` | 1 to 5 |
 | `deadline`, `submitted_at` | `"HH:MM"`, `"HH:MM:SS"`, `"HH:MM+1d"` (next day), an ISO time like `"2026-11-07T08:30"` (date ignored), or minutes. The deadline must come after submission. A missing submission time means "now" (in a file: the scenario start) |
 
-**Disruptions** (see [samples/disruptions.json](samples/disruptions.json)):
+**Disruptions** (example: [tests/fixtures/toronto_disruptions.json](tests/fixtures/toronto_disruptions.json)):
 - `road_closure` and `road_reopen`, by `edge`, `edges`, or `a` + `b`
 - `node_closure` and `node_reopen`
 - `vehicle_breakdown` and `vehicle_repair`
@@ -134,9 +141,7 @@ Every disruption has a `time` and an optional `reason`.
 ## Project structure
 ```
 main.py            entry point (CLI arguments)
-data/              OFFICIAL dataset (unchanged)
-samples/           OUR sample emergencies/disruptions (AI-generated, not official)
-                   + samples/weather/: saved real weather (Open-Meteo)
+data/              OFFICIAL Dataset 1 (unchanged); the program reads whichever --dataset is given
 config/            example config overrides (incl. rush hours)
 core/              algorithms, no dataset-specific code:
                    graph, routing (Dijkstra), emergency (validation), scoring,
@@ -146,7 +151,10 @@ loader/            dataset / config / input-file loading
 sim/               simulator + seeded scenario generator
 ui/                command-line dashboard (cli.py) + web dashboard server (web.py)
                    + ui/static/: the dashboard page (index.html, app.css, app.js)
-tests/             unittest suite + Dataset-2-style fixture
+tests/             unittest suite
+                   + tests/fixtures/: test data only (the program never reads it on its own):
+                     rehearsal_town.json (fictional city, Dataset 1 format), sparse_town.json
+                     (Dataset-2-style edge cases), Toronto test scenario + saved weather
 DECISIONS.md       algorithms, data structures, complexity, trade-offs
 PROGRESS.md        build status, file map, known issues, next steps
 make_zip.py        builds Ironcladreturns_Programming_Code.zip
@@ -159,15 +167,15 @@ make_zip.py        builds Ironcladreturns_Programming_Code.zip
 
 The dataset's own disclosure says it is a generated simulation: an approximate downtown street graph with illustrative depots and resources. It is not surveyed roads, live traffic, or real food-bank inventories.
 
-**Our own test data.** `samples/*.json` and `tests/fixtures/sparse_town.json` were written for this project (AI-assisted, see below). They are not official competition data.
+**Our own test data.** Everything in `tests/fixtures/` except the weather snapshot (the Toronto test scenario, `sparse_town.json` and the fictional `rehearsal_town.json`) was written for this project (AI-assisted, see below). None of it is official competition data, and the program only reads it when a test or a command line names it.
 
 **Generative AI.**
-- **Claude (Anthropic, model *Claude Opus 5.5*, `claude-opus-5-5`)**, used via Claude Code on 2026-11-07, generated the initial draft of the modules, tests, sample scenarios, Open-Meteo weather snapshot integration, and documentation from the team's specification, implemented Round-1 review fixes, and drafted the redesigned web dashboard (`ui/web.py`, `ui/static/`).
+- **Claude (Anthropic, model *Claude Opus 5.5*, `claude-opus-5-5`)**, used via Claude Code on 2026-11-07, generated the initial draft of the modules, tests, sample scenarios, Open-Meteo weather snapshot integration, and documentation from the team's specification, implemented Round-1 review fixes, drafted the redesigned web dashboard (`ui/web.py`, `ui/static/`), and made the submission-ready version: dataset required, no built-in sample data or city values, the fictional rehearsal town and its end-to-end tests.
 - **Google Antigravity (model *Gemini*)**, used on 2026-11-07, performed two rounds of code review against the competition abstract and rulebook, merged city-conditions into `main`, removed redundant CLI commands, and implemented Round-2 bug fixes and regression tests (`Trip.retime` multi-change ETA math, rush-hour clock sync, `Simulator.advance`, coordinate/config/input guards).
 - The team manually refactored and reviewed the source files. This section and [PROGRESS.md](PROGRESS.md) retain the history of AI contributions and the team’s verification.
 - No AI tool was used to write presentation scripts.
 
-**Weather data.** Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0. The saved file is `samples/weather/toronto-downtown_2025-02-16.json`. Weather codes follow the WMO code table used by Open-Meteo. The weather and rush-hour travel-time factors are our own assumptions, not measured data.
+**Weather data.** Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0. The saved file is `tests/fixtures/toronto_weather_2025-02-16.json`. Weather codes follow the WMO code table used by Open-Meteo. The weather and rush-hour travel-time factors are our own assumptions, not measured data.
 
 **Algorithms and references.**
 - E. W. Dijkstra, "A note on two problems in connexion with graphs", *Numerische Mathematik* 1 (1959), for shortest paths.

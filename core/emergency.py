@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from core.state_machine import CrisisState, TERMINAL_STATES
 from core.utils import fmt_time, id_sort_key, normalize_id, parse_time, to_bool, to_number
 
-# Words too common to count as a match ("Yonge St & King St" vs "king and yonge").
+# Words too common to count as a match ("Main St & Oak Ave" vs "main and oak").
 _FILLER_WORDS = {"and", "the", "st", "ave", "rd", "at", "of", "near", "&"}
 
 # Other names we accept for each field (helps if Dataset 2 input files use
@@ -189,11 +189,12 @@ def suggest_locations(text, graph, pois, limit=3):
     Returns [(value to type, readable label, "place" or "intersection")].
     Scoring (higher is better), per candidate:
       3.0          the whole text appears in its id/name/address/kind
-                   ("Toronto" -> "Toronto General Hospital")
-      2 x share    share of the text's words found in it, if at least half
-                   ("king and yonge" -> "Yonge St & King St")
+                   ("General" -> "City General Hospital")
+      2 x share    share of the text's words found in it, as written or as a
+                   close typo of one of its words (>= 0.8), if at least half
+                   ("oak and main" -> "Main St & Oak Ave")
       ratio        difflib similarity (typos), if >= 0.6 for the whole name
-                   or >= 0.8 for a single word ("waterfrnt" -> "waterfront")
+                   or >= 0.8 for a single word ("hospitl" -> "hospital")
     Places (POIs) are listed before plain intersections on equal score.
     Works on any dataset: it only reads the loaded names.
     """
@@ -205,12 +206,18 @@ def suggest_locations(text, graph, pois, limit=3):
                   for p in pois.values()]
     candidates += [(n.id, n.name, f"{n.id} {n.name}".lower(), "intersection", 1)
                    for n in graph.nodes.values()]
+    def found(word, haystack):
+        # As written, or a close typo of one word ("hospitl" counts for "hospital").
+        return word in haystack or any(difflib.SequenceMatcher(None, word, h).ratio() >= 0.8
+                                       for h in haystack.split())
+
     scored = []
     for value, name, haystack, kind, order in candidates:
+        share = sum(found(w, haystack) for w in words) / len(words) if words else 0.0
         if query in haystack:
             score = 3.0
-        elif words and sum(w in haystack for w in words) / len(words) >= 0.5:
-            score = 2.0 * sum(w in haystack for w in words) / len(words)
+        elif share >= 0.5:
+            score = 2.0 * share
         else:
             whole = max(difflib.SequenceMatcher(None, query, name.lower()).ratio(),
                         difflib.SequenceMatcher(None, query, str(value).lower()).ratio())

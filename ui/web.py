@@ -1,6 +1,6 @@
 """Live web dashboard, standard library only (http.server).
 
-Run:  python3 main.py --demo --web      then open http://localhost:8765
+Run:  python3 main.py --dataset CITY.json --web      then open http://localhost:8765
 
 The page itself lives in ui/static/ (index.html, app.css, app.js) so it can
 be read and edited like any web page. This file is only the small server:
@@ -80,8 +80,17 @@ class Dashboard:
 
     def _use(self, system, simulator):
         self.system, self.sim = system, simulator
+        # Was anything scheduled from files / --generate? If not, this is an
+        # empty live city that waits for requests typed into the page.
+        self.has_scenario = bool(simulator.pending())
         if not simulator.started:  # show the scenario's start time, not 00:00
             system.set_clock(simulator.start_time())
+
+    def scenario_over(self):
+        """True once a scheduled scenario has played out to the end (the clock
+        then stops). A city started with nothing scheduled is never "over":
+        its clock keeps running and waits for the operator's requests."""
+        return self.has_scenario and self.sim.finished()
 
     def reset(self):
         """Fresh copy of the same scenario. Call with the lock held."""
@@ -107,7 +116,7 @@ class Dashboard:
             with self.changed:
                 if not self.playing:
                     continue
-                if self.sim.finished():
+                if self.scenario_over():
                     self.playing = False
                 else:
                     self.sim.advance(SPEEDS[self.speed] * self.tick_seconds)
@@ -136,7 +145,7 @@ class Dashboard:
             "dataset": s.dataset.name,
             "clock": fmt_time(now),
             "now": now,
-            "finished": self.sim.finished(),
+            "finished": self.scenario_over(),
             "playing": self.playing,
             "speed": self.speed,
             "scheduled": len(self.sim.pending()),
@@ -266,13 +275,15 @@ class Dashboard:
                 self.speed = key
             if "on" in query:
                 on = query["on"][0] in ("1", "true", "yes")
-                if on and self.sim.finished():
+                if on and self.scenario_over():
                     return False, "The scenario has finished: press Reset to run it again", {}
                 self.playing = on
             return True, ("Live" if self.playing else "Paused") + f" at speed {self.speed}", {}
         if path == "/run":
             self.playing = False
             self.sim.run()
+            if not self.system.emergencies:
+                return True, "No emergencies to run yet: add one with New emergency", {}
             return True, f"Ran to {fmt_time(self.system.now)}", {}
         if path == "/reset":
             ok, message = self.reset()
@@ -316,7 +327,7 @@ class Dashboard:
         server = self.make_server(port, host)
         with self.changed:
             self.autoplay = autoplay
-            self.playing = autoplay and not self.sim.finished()
+            self.playing = autoplay and not self.scenario_over()
         print(f"Dashboard: open http://{host}:{server.server_port}/ in a browser (Ctrl-C to stop)")
         print("The city clock is " + ("running live." if self.playing else "paused: press Play in the page."))
         try:

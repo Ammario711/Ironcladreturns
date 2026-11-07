@@ -1,0 +1,657 @@
+{
+  "id": "riverbend-rehearsal",
+  "name": "Riverbend (fictional rehearsal town)",
+  "center": [
+    45.0636,
+    -77.837
+  ],
+  "zoom": 14,
+  "nodes": [
+    {
+      "id": 101,
+      "name": "River Rd & 1st Ave",
+      "lat": 45.051,
+      "lng": -77.855
+    },
+    {
+      "id": 102,
+      "name": "River Rd & 2nd Ave",
+      "lat": 45.051,
+      "lng": -77.849
+    },
+    {
+      "id": 103,
+      "name": "River Rd & 3rd Ave",
+      "lat": 45.051,
+      "lng": -77.843
+    },
+    {
+      "id": 104,
+      "name": "River Rd & 4th Ave",
+      "lat": 45.051,
+      "lng": -77.837
+    },
+    {
+      "id": 106,
+      "name": "Main St & 1st Ave",
+      "lat": 45.0552,
+      "lng": -77.855
+    },
+    {
+      "id": 107,
+      "name": "Main St & 2nd Ave",
+      "lat": 45.0552,
+      "lng": -77.849
+    },
+    {
+      "id": 108,
+      "name": "Main St & 3rd Ave",
+      "lat": 45.0552,
+      "lng": -77.843
+    },
+    {
+      "id": 110,
+      "name": "Main St & 4th Ave",
+      "lat": 45.0552,
+      "lng": -77.837
+    },
+    {
+      "id": 111,
+      "name": "Mill St & 1st Ave",
+      "lat": 45.0594,
+      "lng": -77.855
+    },
+    {
+      "id": 112,
+      "name": "Mill St & 2nd Ave",
+      "lat": 45.0594,
+      "lng": -77.849
+    },
+    {
+      "id": 114,
+      "name": "Mill St & 3rd Ave",
+      "lat": 45.0594,
+      "lng": -77.843
+    },
+    {
+      "id": 115,
+      "name": "Mill St & 4th Ave",
+      "lat": 45.0594,
+      "lng": -77.837
+    },
+    {
+      "id": 116,
+      "name": "Church St & 1st Ave",
+      "lat": 45.0636,
+      "lng": -77.855
+    },
+    {
+      "id": 118,
+      "name": "Church St & 2nd Ave",
+      "lat": 45.0636,
+      "lng": -77.849
+    },
+    {
+      "id": 119,
+      "name": "Church St & 3rd Ave",
+      "lat": 45.0636,
+      "lng": -77.843
+    },
+    {
+      "id": 120,
+      "name": "Church St & 4th Ave",
+      "lat": 45.0636,
+      "lng": -77.837
+    },
+    {
+      "id": 201,
+      "name": "Hwy 7 & Eastfield Rd",
+      "lat": 45.0552,
+      "lng": -77.816
+    },
+    {
+      "id": 202,
+      "name": "Eastfield Rd & Barn Ln",
+      "lat": 45.05772,
+      "lng": -77.8094
+    },
+    {
+      "id": 203,
+      "name": "Eastfield Rd & Pond St",
+      "lat": 45.05352,
+      "lng": -77.8046
+    },
+    {
+      "id": 301,
+      "name": "Quarry Rd & Birch Line",
+      "lat": 45.0762,
+      "lng": -77.8478
+    },
+    {
+      "id": 302,
+      "name": "Quarry Rd (north end)",
+      "lat": 45.08544,
+      "lng": -77.8502
+    },
+    {
+      "id": 401,
+      "name": "Island Rd (bridge end)",
+      "lat": 45.04512,
+      "lng": -77.8412
+    }
+  ],
+  "edges": [
+    {
+      "id": 1000,
+      "a": 101,
+      "b": 102,
+      "km": 0.471,
+      "w": 0.9427,
+      "street": "River Rd",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1001,
+      "a": 102,
+      "b": 103,
+      "km": 0.471,
+      "w": 0.9427,
+      "street": "River Rd",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1002,
+      "a": 103,
+      "b": 104,
+      "km": 0.471,
+      "w": 0.9427,
+      "street": "River Rd",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1003,
+      "a": 106,
+      "b": 107,
+      "km": 0.471,
+      "w": 0.9426,
+      "street": "Main St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1004,
+      "a": 107,
+      "b": 108,
+      "km": 0.471,
+      "w": 0.9426,
+      "street": "Main St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1005,
+      "a": 108,
+      "b": 110,
+      "km": 0.471,
+      "w": 0.9426,
+      "street": "Main St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1006,
+      "a": 111,
+      "b": 112,
+      "km": 0.471,
+      "w": 0.9425,
+      "street": "Mill St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1007,
+      "a": 112,
+      "b": 114,
+      "km": 0.471,
+      "w": 0.9425,
+      "street": "Mill St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1008,
+      "a": 116,
+      "b": 118,
+      "km": 0.471,
+      "w": 0.9425,
+      "street": "Church St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1009,
+      "a": 118,
+      "b": 119,
+      "km": 0.471,
+      "w": 0.9425,
+      "street": "Church St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1010,
+      "a": 119,
+      "b": 120,
+      "km": 0.471,
+      "w": 0.9425,
+      "street": "Church St",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1011,
+      "a": 106,
+      "b": 111,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "1st Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1012,
+      "a": 111,
+      "b": 116,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "1st Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1013,
+      "a": 102,
+      "b": 107,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "2nd Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1014,
+      "a": 107,
+      "b": 112,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "2nd Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1015,
+      "a": 112,
+      "b": 118,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "2nd Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1016,
+      "a": 103,
+      "b": 108,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "3rd Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1017,
+      "a": 108,
+      "b": 114,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "3rd Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1018,
+      "a": 114,
+      "b": 119,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "3rd Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1019,
+      "a": 104,
+      "b": 110,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "4th Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1020,
+      "a": 110,
+      "b": 115,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "4th Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1021,
+      "a": 115,
+      "b": 120,
+      "km": 0.467,
+      "w": 0.934,
+      "street": "4th Ave",
+      "hwy": false,
+      "terrain": "urban"
+    },
+    {
+      "id": 1022,
+      "a": 110,
+      "b": 201,
+      "km": 1.65,
+      "w": 1.4139,
+      "street": "Hwy 7",
+      "hwy": true,
+      "terrain": "rural"
+    },
+    {
+      "id": 1023,
+      "a": 201,
+      "b": 202,
+      "km": 0.589,
+      "w": 0.884,
+      "street": "Eastfield Rd",
+      "hwy": false,
+      "terrain": "rural"
+    },
+    {
+      "id": 1024,
+      "a": 201,
+      "b": 203,
+      "km": 0.915,
+      "w": 1.3722,
+      "street": "Eastfield Rd",
+      "hwy": false,
+      "terrain": "rural"
+    },
+    {
+      "id": 1025,
+      "a": 202,
+      "b": 203,
+      "km": 0.6,
+      "w": 1.4405,
+      "street": "Barn Ln",
+      "hwy": false,
+      "terrain": "gravel"
+    },
+    {
+      "id": 1026,
+      "a": 104,
+      "b": 203,
+      "km": 2.561,
+      "w": 2.1948,
+      "street": "Hwy 7 bypass",
+      "hwy": true,
+      "terrain": "rural"
+    },
+    {
+      "id": 1027,
+      "a": 116,
+      "b": 301,
+      "km": 1.511,
+      "w": 2.2663,
+      "street": "Quarry Rd",
+      "hwy": false,
+      "terrain": "rural"
+    },
+    {
+      "id": 1028,
+      "a": 118,
+      "b": 301,
+      "km": 1.404,
+      "w": 2.1063,
+      "street": "Birch Line",
+      "hwy": false,
+      "terrain": "rural"
+    },
+    {
+      "id": 1029,
+      "a": 301,
+      "b": 302,
+      "km": 1.045,
+      "w": 1.7907,
+      "street": "Quarry Rd",
+      "hwy": false,
+      "terrain": "gravel"
+    },
+    {
+      "id": 1030,
+      "a": 103,
+      "b": 401,
+      "km": 0.669,
+      "w": 1.6055,
+      "street": "Island Rd bridge",
+      "hwy": false,
+      "terrain": "urban"
+    }
+  ],
+  "pois": [
+    {
+      "id": "H1",
+      "name": "Riverbend Community Pantry",
+      "kind": "hub",
+      "node": 107,
+      "lat": 45.0552,
+      "lng": -77.849,
+      "address": "45 Main St"
+    },
+    {
+      "id": "H2",
+      "name": "Eastfield Grain Co-op depot",
+      "kind": "hub",
+      "node": 202,
+      "lat": 45.05772,
+      "lng": -77.8094,
+      "address": "8 Barn Ln"
+    },
+    {
+      "id": "H3",
+      "name": "Mill St cold storage",
+      "kind": "hub",
+      "node": 111,
+      "lat": 45.0594,
+      "lng": -77.855,
+      "address": "2 Mill St"
+    },
+    {
+      "id": "H4",
+      "name": "Quarry Rd relief depot",
+      "kind": "hub",
+      "node": 301,
+      "lat": 45.0762,
+      "lng": -77.8478,
+      "address": "Quarry Rd at Birch Line"
+    },
+    {
+      "id": "S1",
+      "name": "Riverbend District Hospital",
+      "kind": "hospital",
+      "node": 119,
+      "lat": 45.0636,
+      "lng": -77.843,
+      "address": "300 Church St"
+    },
+    {
+      "id": "S2",
+      "name": "St. Anne's Shelter",
+      "kind": "shelter",
+      "node": 110,
+      "lat": 45.0552,
+      "lng": -77.837,
+      "address": "120 Main St"
+    },
+    {
+      "id": "S3",
+      "name": "Riverside Public School",
+      "kind": "school",
+      "node": 102,
+      "lat": 45.051,
+      "lng": -77.849,
+      "address": "15 River Rd"
+    },
+    {
+      "id": "S4",
+      "name": "Maple Court Seniors' Residence",
+      "kind": "senior_home",
+      "node": 115,
+      "lat": 45.0594,
+      "lng": -77.837,
+      "address": "90 Mill St"
+    },
+    {
+      "id": "S5",
+      "name": "Eastfield Community Hall",
+      "kind": "community",
+      "node": 203,
+      "lat": 45.05352,
+      "lng": -77.8046,
+      "address": "1 Pond St"
+    },
+    {
+      "id": "S6",
+      "name": "Island Road Cottages",
+      "kind": "community",
+      "node": 401,
+      "lat": 45.04512,
+      "lng": -77.8412,
+      "address": "Island Rd"
+    },
+    {
+      "id": "S7",
+      "name": "Quarry Workers' Camp",
+      "kind": "shelter",
+      "node": 302,
+      "lat": 45.08544,
+      "lng": -77.8502,
+      "address": "Quarry Rd north"
+    }
+  ],
+  "hubs": [
+    {
+      "poiId": "H1",
+      "normal": 260,
+      "cold": 60
+    },
+    {
+      "poiId": "H2",
+      "normal": 180,
+      "cold": 0
+    },
+    {
+      "poiId": "H3",
+      "normal": 120,
+      "cold": 140
+    },
+    {
+      "poiId": "H4",
+      "normal": 90,
+      "cold": 20
+    }
+  ],
+  "trucks": [
+    {
+      "id": "T01",
+      "name": "Cold Van 1",
+      "home": 107,
+      "refrigerated": true,
+      "capacity": 35,
+      "fuel": 100
+    },
+    {
+      "id": "T02",
+      "name": "Box Truck 2",
+      "home": 107,
+      "refrigerated": false,
+      "capacity": 70,
+      "fuel": 100
+    },
+    {
+      "id": "T03",
+      "name": "Pickup 3",
+      "home": 107,
+      "refrigerated": false,
+      "capacity": 30,
+      "fuel": 90
+    },
+    {
+      "id": "T04",
+      "name": "Cold Van 4",
+      "home": 111,
+      "refrigerated": true,
+      "capacity": 45,
+      "fuel": 100
+    },
+    {
+      "id": "T05",
+      "name": "Box Truck 5",
+      "home": 111,
+      "refrigerated": false,
+      "capacity": 65,
+      "fuel": 85
+    },
+    {
+      "id": "T06",
+      "name": "Farm Truck 6",
+      "home": 202,
+      "refrigerated": false,
+      "capacity": 80,
+      "fuel": 100
+    },
+    {
+      "id": "T07",
+      "name": "Pickup 7",
+      "home": 202,
+      "refrigerated": false,
+      "capacity": 25,
+      "fuel": 70
+    },
+    {
+      "id": "T08",
+      "name": "Cold Van 8",
+      "home": 301,
+      "refrigerated": true,
+      "capacity": 30,
+      "fuel": 95
+    },
+    {
+      "id": "T09",
+      "name": "Box Truck 9",
+      "home": 301,
+      "refrigerated": false,
+      "capacity": 55,
+      "fuel": 100
+    }
+  ],
+  "terrain": [],
+  "sources": [
+    "Fictional: generated by the team for rehearsal and tests"
+  ],
+  "disclosure": "Fictional rehearsal town in the competition dataset format, used to prove a NEW dataset runs with zero code changes. Not a real place, roads or food banks. Team-made with AI assistance (see README)."
+}

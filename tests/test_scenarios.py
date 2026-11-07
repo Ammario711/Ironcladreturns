@@ -4,7 +4,7 @@ import unittest
 
 from core.state_machine import CrisisState as S
 from core.trips import BLOCKED
-from helpers import (SAMPLE_DISRUPTIONS, SAMPLE_EMERGENCIES, SPARSE, check_invariants,
+from helpers import (TORONTO_DISRUPTIONS, TORONTO_EMERGENCIES, SPARSE, check_invariants,
                      make_system, request, run_until)
 from loader.input_loader import load_disruptions_file, load_emergencies_file
 from sim.scenario_generator import generate_scenario
@@ -18,9 +18,9 @@ def states_visited(e):
 def sample_run():
     s = make_system()
     sim = Simulator(s)
-    for raw in load_emergencies_file(SAMPLE_EMERGENCIES):
+    for raw in load_emergencies_file(TORONTO_EMERGENCIES):
         sim.schedule_emergency(raw)
-    for raw in load_disruptions_file(SAMPLE_DISRUPTIONS):
+    for raw in load_disruptions_file(TORONTO_DISRUPTIONS):
         sim.schedule_disruption(raw)
     return s, sim
 
@@ -154,7 +154,7 @@ class ScenarioTests(unittest.TestCase):
 
     def test_dataset2_style_fixture_with_generated_scenario(self):
         s = make_system(SPARSE)
-        emergencies, disruptions = generate_scenario(s.dataset, n_emergencies=6, n_disruptions=3, seed=7)
+        emergencies, disruptions = generate_scenario(s.dataset, 480, n_emergencies=6, n_disruptions=3, seed=7)
         sim = Simulator(s)
         for raw in emergencies:
             sim.schedule_emergency(raw)
@@ -163,7 +163,7 @@ class ScenarioTests(unittest.TestCase):
         sim.run()
         check_invariants(self, s)
         self.assertTrue(sim.finished())
-        self.assertEqual(generate_scenario(s.dataset, 6, 3, seed=7)[0], emergencies)  # same seed, same scenario
+        self.assertEqual(generate_scenario(s.dataset, 480, 6, 3, seed=7)[0], emergencies)  # same seed, same scenario
 
     def test_disconnected_site_fails_immediately(self):
         s = make_system(SPARSE)

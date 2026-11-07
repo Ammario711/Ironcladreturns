@@ -10,8 +10,8 @@ from loader.dataset_loader import load_dataset, parse_dataset
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TORONTO = os.path.join(ROOT, "data", "toronto-downtown.json")
 SPARSE = os.path.join(ROOT, "tests", "fixtures", "sparse_town.json")
-SAMPLE_EMERGENCIES = os.path.join(ROOT, "samples", "emergencies.json")
-SAMPLE_DISRUPTIONS = os.path.join(ROOT, "samples", "disruptions.json")
+TORONTO_EMERGENCIES = os.path.join(ROOT, "tests", "fixtures", "toronto_emergencies.json")
+TORONTO_DISRUPTIONS = os.path.join(ROOT, "tests", "fixtures", "toronto_disruptions.json")
 
 
 def config(overrides=None):
