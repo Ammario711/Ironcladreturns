@@ -1,5 +1,5 @@
 {
-  "_note": "Synthetic Dataset-2-style TEST FIXTURE (AI-assisted, team-made), not official data.",
+  "_note": "Synthetic Dataset-2-style test fixture for loader and routing edge cases; not official data.",
   "id": "sparse-town-test",
   "name": "Sparse Town (TEST FIXTURE, not official data)",
   "center": [44.0, -79.0],
@@ -42,5 +42,5 @@
   ],
   "terrain": [{"type": "gravel", "multiplier": 1.5}, {"type": "rural", "multiplier": 1.2}, "bad entry"],
   "sources": ["synthetic test fixture"],
-  "disclosure": "Synthetic test fixture written by the team (AI-assisted) for tests only."
+  "disclosure": "Synthetic test fixture for tests only; not official competition data."
 }

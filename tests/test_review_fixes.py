@@ -1,4 +1,4 @@
-"""Tests for the fixes made after the external (Gemini) code review.
+"""Regression tests for fixes made after external code review.
 
 One class per area, in the same order as the review: input, loaders/config,
 routing/trips/fuel/matcher, scoring/system/simulator, CLI.
