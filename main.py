@@ -51,8 +51,11 @@ def default_bind():
 def build_parser():
     default_host, default_port = default_bind()
     p = argparse.ArgumentParser(description="Urban Food Crisis Response and Routing System (team Ironcladreturns)")
-    p.add_argument("--dataset", default=os.path.join(HERE, "data", "toronto-downtown.json"),
-                   help="city dataset JSON (default: Dataset 1, downtown Toronto)")
+    traffic_file = os.path.join(HERE, "data", "toronto-live-traffic.json")
+    default_dataset = (traffic_file if os.path.isfile(traffic_file)
+                       else os.path.join(HERE, "data", "toronto-downtown.json"))
+    p.add_argument("--dataset", default=default_dataset,
+                   help="city dataset JSON (default: saved TomTom traffic when available, otherwise Dataset 1)")
     p.add_argument("--emergencies", action="append", default=[], help="emergency requests JSON (repeatable)")
     p.add_argument("--disruptions", action="append", default=[], help="disruption events JSON (repeatable)")
     p.add_argument("--demo", action="store_true", help="also load samples/emergencies.json + samples/disruptions.json")

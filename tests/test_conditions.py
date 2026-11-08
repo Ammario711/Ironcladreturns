@@ -261,7 +261,9 @@ class WeatherSnapshotTests(unittest.TestCase):
     def test_main_weather_flag_replays_the_snapshot(self):
         out = io.StringIO()
         with redirect_stdout(out):
-            code = main.main(["--demo", "--weather", SNAPSHOT, "--run", "--quiet"])
+            # The expected finish time belongs to the original baseline weights.
+            code = main.main(["--dataset", os.path.join(ROOT, "data", "toronto-downtown.json"),
+                              "--demo", "--weather", SNAPSHOT, "--run", "--quiet"])
         self.assertEqual(code, 0)
         self.assertIn("Weather 2025-02-16", out.getvalue())
         self.assertIn("Scenario report at 10:", out.getvalue())  # later weather does not keep it running
