@@ -229,8 +229,81 @@ class WebDashboardTests(unittest.TestCase):
                 line = reply.fp.readline()
                 self.assertTrue(line, "stream closed before the reset event")
                 seen += line
+            self.assertIn(b"id: 0\n", seen)
         finally:
             conn.close()
+
+    def test_cloud_hosting_health_head_and_bind_defaults(self):
+        import os
+        import main
+        from unittest import mock
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(main.default_bind(), ("127.0.0.1", 8765))
+        with mock.patch.dict(os.environ, {"PORT": "10000"}, clear=True):
+            self.assertEqual(main.default_bind(), ("0.0.0.0", 10000))
+        with mock.patch.dict(os.environ, {"PORT": "9000", "HOST": "127.0.0.1"}, clear=True):
+            self.assertEqual(main.default_bind(), ("127.0.0.1", 9000))
+
+        body, ctype = self.get("/healthz")
+        self.assertEqual(body, "ok")
+        self.assertIn("text/plain", ctype)
+
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            for path in ("/", "/healthz", "/state"):
+                conn.request("HEAD", path)
+                reply = conn.getresponse()
+                self.assertEqual(reply.status, 200, path)
+                self.assertEqual(reply.read(), b"")
+        finally:
+            conn.close()
+
+    def test_stream_proxy_headers_negative_since_and_paused_emergency(self):
+        # Negative Content-Length is rejected cleanly instead of reading until EOF.
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            conn.request("POST", "/disrupt", body=b"", headers={"Content-Length": "-1"})
+            reply = conn.getresponse()
+            self.assertEqual(reply.status, 400)
+            reply.read()
+        finally:
+            conn.close()
+
+        # Negative since=-1 on an empty log must wait calmly, not spin keep-alives,
+        # and include X-Accel-Buffering: no for Cloudflare / Nginx proxies.
+        conn2 = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            conn2.request("GET", "/events?since=-1")
+            reply = conn2.getresponse()
+            self.assertEqual(reply.getheader("X-Accel-Buffering"), "no")
+            self.assertIn("no-transform", reply.getheader("Cache-Control"))
+            self.post("/tick?minutes=1")
+            first = reply.fp.readline()
+            self.assertEqual(first, b"id: 1\n")
+        finally:
+            conn2.close()
+
+        # Reset leaves sim unstarted at 08:00; adding an emergency while paused
+        # must still load scheduled 08:00 inputs first, and future submitted_at
+        # must be scheduled instead of dispatched early.
+        self.post("/reset")
+        self.post("/play?on=0")
+        code, reply = self.post("/emergency", {
+            "location": "P5", "crisis_type": "shelter_surge",
+            "people_affected": 25, "food_normal": 15, "food_cold": 0,
+            "severity": 2, "submitted_at": "08:00", "deadline": "10:00",
+        })
+        self.assertEqual(code, 200)
+        self.assertIn("E1", self.system.emergencies)  # scheduled 08:00 E1 loaded first
+
+        code2, reply2 = self.post("/emergency", {
+            "location": "P5", "crisis_type": "shelter_surge",
+            "people_affected": 25, "food_normal": 15, "food_cold": 0,
+            "severity": 3, "submitted_at": "09:30", "deadline": "10:30",
+        })
+        self.assertEqual(code2, 200)
+        self.assertIn("Scheduled for 09:30", reply2["message"])
 
 
 if __name__ == "__main__":

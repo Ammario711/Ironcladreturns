@@ -44,8 +44,9 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from core.emergency import validate_emergency
 from core.trips import EN_ROUTE
-from core.utils import fmt_time, id_sort_key, normalize_id
+from core.utils import fmt_time, id_sort_key, normalize_id, parse_time
 from ui.cli import format_event
 
 KEEPALIVE_SECONDS = 15  # an SSE comment line this often keeps the connection open
@@ -133,6 +134,7 @@ class Dashboard:
         stats["on_time_percent"] = round(100 * stats["on_time"] / done) if done else None
         return {
             "run_id": self.run_id,
+            "dataset_id": s.dataset.id,
             "dataset": s.dataset.name,
             "clock": fmt_time(now),
             "now": now,
@@ -179,9 +181,10 @@ class Dashboard:
         info["from"] = info["to"] = trip.nodes[i]
         if i < len(trip.edges):
             depart = trip.pickup_time if i == trip.pickup_index else trip.times[i]  # leaves after loading
-            span = trip.times[i + 1] - depart
-            if now > depart and span > 0:
-                info["to"], info["f"] = trip.nodes[i + 1], round(min(1.0, (now - depart) / span), 3)
+            leg_cost = trip.edge_costs[i] if i < len(trip.edge_costs) else (trip.times[i + 1] - depart)
+            if now > depart and leg_cost > 0:
+                progress = 1.0 - (trip.times[i + 1] - now) / leg_cost
+                info["to"], info["f"] = trip.nodes[i + 1], round(min(1.0, max(0.0, progress)), 3)
         info["trip"] = {"id": trip.id, "emergency": trip.emergency_id, "load": f"{trip.normal}N/{trip.cold}C",
                         "eta": fmt_time(trip.delivery_time) if trip.status == EN_ROUTE else None,
                         "status": trip.status, "loaded": trip.is_loaded(now)}
@@ -203,6 +206,7 @@ class Dashboard:
             "unassigned": f"{e.unassigned_normal}N/{e.unassigned_cold}C",
             "submitted": fmt_time(e.submitted_at), "deadline": fmt_time(e.deadline), "deadline_min": e.deadline,
             "delivered_at": fmt_time(e.delivered_at) if e.delivered_at is not None else None,
+            "delivered_at_min": e.delivered_at,
             "priority": e.priority, "base_score": e.base_score, "aging": e.aging_bonus,
             "breakdown": e.score_breakdown, "waiting_reason": e.last_wait_reason,
             "last": e.history[-1].explanation if e.history else "",
@@ -294,6 +298,22 @@ class Dashboard:
         if path == "/emergency":
             if not isinstance(body, dict):
                 return False, "send the request as a JSON object", {}
+            if not self.sim.started:
+                self.sim.step_to(self.system.now)
+            try:
+                submitted = parse_time(body["submitted_at"]) if body.get("submitted_at") not in (None, "") else None
+            except ValueError:
+                submitted = None
+            if submitted is not None and submitted > self.system.now + 1e-6:
+                s = self.system
+                check = validate_emergency(body, s.graph, s.pois, s.config,
+                                           existing_ids=s.emergencies.keys(), now=submitted)
+                if not check.ok:
+                    return False, "Please fix the highlighted problems", {"errors": check.errors,
+                                                                         "warnings": check.warnings}
+                self.sim.schedule_emergency(body)
+                return True, f"Scheduled for {fmt_time(submitted)}", {"id": check.emergency.id,
+                                                                     "warnings": check.warnings}
             result = self.system.submit_emergency(body)
             if not result.ok:
                 return False, "Please fix the highlighted problems", {"errors": result.errors,
@@ -317,7 +337,9 @@ class Dashboard:
         with self.changed:
             self.autoplay = autoplay
             self.playing = autoplay and not self.sim.finished()
-        print(f"Dashboard: open http://{host}:{server.server_port}/ in a browser (Ctrl-C to stop)")
+        shown = "localhost" if host in ("0.0.0.0", "::", "") else host
+        bound = f" (listening on {host}:{server.server_port})" if shown != host else ""
+        print(f"Dashboard: open http://{shown}:{server.server_port}/ in a browser{bound} (Ctrl-C to stop)")
         print("The city clock is " + ("running live." if self.playing else "paused: press Play in the page."))
         try:
             server.serve_forever()
@@ -334,38 +356,49 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass  # keep the terminal quiet (one line per request otherwise)
 
-    def _send(self, code, body, content_type):
+    def _send(self, code, body, content_type, head_only=False):
         data = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(data)
+        if not head_only:
+            self.wfile.write(data)
 
-    def do_GET(self):
+    def _handle_read(self, head_only=False):
         url = urlparse(self.path)
         d = self.dashboard
         if url.path in STATIC_FILES:
             name, content_type = STATIC_FILES[url.path]
             with open(os.path.join(STATIC_DIR, name), "rb") as handle:
-                self._send(200, handle.read(), content_type)
+                self._send(200, handle.read(), content_type, head_only=head_only)
+        elif url.path == "/healthz":
+            self._send(200, "ok", "text/plain; charset=utf-8", head_only=head_only)
         elif url.path == "/state":
             with d.changed:
                 body = json.dumps(d.state(), default=str)
-            self._send(200, body, "application/json")
+            self._send(200, body, "application/json", head_only=head_only)
         elif url.path == "/dataset":
             with d.changed:
                 body = json.dumps(d.dataset_info(), default=str)
-            self._send(200, body, "application/json")
-        elif url.path == "/events":
+            self._send(200, body, "application/json", head_only=head_only)
+        elif url.path == "/events" and not head_only:
             self._stream(parse_qs(url.query))
         else:
-            self._send(404, "not found", "text/plain")
+            self._send(404, "not found", "text/plain", head_only=head_only)
+
+    def do_GET(self):
+        self._handle_read(head_only=False)
+
+    def do_HEAD(self):
+        self._handle_read(head_only=True)
 
     def _read_json(self):
         """Request body as JSON (None if there is none). Raises ValueError if bad."""
         length = int(self.headers.get("Content-Length") or 0)
+        if length < 0:
+            raise ValueError("negative Content-Length")
         if length > MAX_BODY_BYTES:
             raise ValueError("request too large")
         if length == 0:
@@ -393,24 +426,27 @@ class _Handler(BaseHTTPRequestHandler):
         sends 'event: clock', so pages redraw the clock and moving vehicles."""
         d = self.dashboard
         try:  # a reconnecting browser sends the last id it saw
-            sent = int(self.headers.get("Last-Event-ID") or query.get("since", ["0"])[0])
+            sent = max(0, int(self.headers.get("Last-Event-ID") or query.get("since", ["0"])[0]))
         except ValueError:
             sent = 0
-        run, version = d.run_id, d.version
+        with d.changed:
+            run, version = d.run_id, d.version
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("X-Accel-Buffering", "no")  # disable Cloudflare/Nginx stream buffering
         self.end_headers()
         try:
+            self.wfile.flush()
             while True:
                 with d.changed:
-                    d.changed.wait_for(lambda: len(d.system.bus.log) > sent or d.run_id != run
+                    d.changed.wait_for(lambda: len(d.system.bus.log) != sent or d.run_id != run
                                        or d.version != version, timeout=KEEPALIVE_SECONDS)
                     clock = None
                     if d.version != version:
                         version = d.version
                         clock = json.dumps({"clock": fmt_time(d.system.now), "playing": d.playing})
-                    if d.run_id != run:
+                    if d.run_id != run or sent > len(d.system.bus.log):
                         run, sent, lines = d.run_id, 0, None
                     else:
                         new = d.system.bus.log[sent:]  # seq numbers are 1, 2, 3... = list position + 1
@@ -418,7 +454,7 @@ class _Handler(BaseHTTPRequestHandler):
                                                       "line": format_event(ev), "payload": ev.payload},
                                                      default=str)) for ev in new]
                 if lines is None:
-                    self.wfile.write(f"event: reset\ndata: {run}\n\n".encode("utf-8"))
+                    self.wfile.write(f"id: 0\nevent: reset\ndata: {run}\n\n".encode("utf-8"))
                 elif lines:
                     for seq, data in lines:
                         self.wfile.write(f"id: {seq}\nevent: bus\ndata: {data}\n\n".encode("utf-8"))

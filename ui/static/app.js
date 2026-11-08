@@ -134,12 +134,13 @@ async function refresh() {
   refreshQueued = false;
   const next = await getJSON("/state");
   const firstLoad = state === null;
-  const restarted = !firstLoad && next.run_id !== state.run_id;
+  const datasetChanged = !firstLoad && (next.dataset_id || next.dataset) !== (state.dataset_id || state.dataset);
+  const restarted = !firstLoad && (next.run_id !== state.run_id || datasetChanged);
   state = next;
   if (firstLoad || restarted) {
     positions = layout(state.nodes);
     toastAfterSeq = state.last_seq;  // older events are history, not news
-    if (firstLoad) fitView();
+    if (firstLoad || datasetChanged) fitView();
   }
   if (state.finished && !wasFinished && !firstLoad) {
     toast("Scenario finished", "Every request is resolved or failed. Press Reset to run it again.", "k-good", "check");
@@ -427,7 +428,10 @@ function dueText(e) {
 }
 /** Short note next to the deadline in the drawer: "in 42 min", "12 min ago", "met". */
 function deadlineNote(e) {
-  if (e.delivered_at) return e.delivered_at <= e.deadline ? "met" : "missed";
+  if (e.delivered_at) {
+    const ok = e.delivered_at_min != null ? e.delivered_at_min <= e.deadline_min : e.delivered_at <= e.deadline;
+    return ok ? "met" : "missed";
+  }
   const left = Math.round(e.deadline_min - state.now);
   return left >= 0 ? `in ${left} min` : `${-left} min ago`;
 }
@@ -795,19 +799,37 @@ function setSeverity(value) {
     b.setAttribute("aria-checked", on);
   });
 }
+function parseLocationInput(text) {
+  if (text.includes(",")) {
+    const parts = text.split(",");
+    if (parts.length === 2 && parts[0].trim() !== "" && parts[1].trim() !== "") {
+      const lat = Number(parts[0].trim()), lng = Number(parts[1].trim());
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+  }
+  return text;
+}
+function resolveDeadlineInput(raw, now) {
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(raw.trim());
+  if (!m) return raw;
+  const mins = Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 60 : 0);
+  let days = Math.floor(now / 1440);
+  if (days * 1440 + mins <= now) days += 1;
+  return days > 0 ? `${raw.trim()}+${days}d` : raw.trim();
+}
 async function submitModal(event) {
   event.preventDefault();
   const form = event.target;
   const location = form.location.value.trim();
   const body = {
-    location: location.includes(",") ? { lat: location.split(",")[0].trim(), lng: location.split(",")[1].trim() } : location,
+    location: parseLocationInput(location),
     crisis_type: form.crisis_type.value,
     people_affected: form.people_affected.value,
     food_normal: form.food_normal.value || 0,
     food_cold: form.food_cold.value || 0,
     severity: form.dataset.severity,
-    deadline: form.deadline.value,
-    submitted_at: state.clock,  // submitted "now" on the simulation clock
+    deadline: resolveDeadlineInput(form.deadline.value, state.now),
+    submitted_at: state.now,  // submitted "now" on the simulation clock
   };
   if (form.location_category.value) body.location_category = form.location_category.value;
   $("#add-submit").disabled = true;
@@ -820,7 +842,7 @@ async function submitModal(event) {
     }
     closeModal();
     toast(reply.message, (reply.warnings || []).join("; ") || "Dispatching now.", "k-good", "check");
-    selection = { kind: "emergency", id: reply.id };
+    if (reply.id) selection = { kind: "emergency", id: reply.id };
     await refresh();
   } finally {
     $("#add-submit").disabled = false;
