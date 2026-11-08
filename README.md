@@ -46,7 +46,7 @@ python3 main.py --demo --run --quiet    # same, report only
 python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
 python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
 python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 155 automated tests, about 10 seconds (no internet needed)
+python3 -m unittest discover -s tests -v   # 157 automated tests, about 10 seconds (no internet needed)
 ```
 
 ### Dataset 2 (zero code changes)
