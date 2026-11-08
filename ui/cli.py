@@ -201,7 +201,7 @@ class CrisisCLI(cmd.Cmd):
         """route FROM TO : fastest route + alternatives (place ids or node ids), e.g. route P0 P4"""
         parts = arg.split()
         if len(parts) != 2:
-            print("Usage: route FROM TO   (e.g. route P0 P4  or  route 33 22)")
+            print("Usage: route FROM TO   (use place or node IDs from your dataset)")
             return
         g = self.system.graph
         nodes = []
@@ -306,7 +306,7 @@ add key=value ... : one line, e.g. add location=P3 crisis_type=flood location_ca
         g, pois = self.system.graph, self.system.pois
         best = None  # top suggestion from the last failed attempt, used by 'y'
         while True:
-            answer = input("  Location (place id like P3, place name, node id, or lat,lng; '?' lists places): ").strip()
+            answer = input("  Location (place id, place name, node id, or lat,lng; '?' lists places): ").strip()
             if answer.lower() == "cancel":
                 return None
             if answer.lower() in ("y", "yes") and best is not None:

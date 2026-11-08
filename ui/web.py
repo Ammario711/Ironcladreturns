@@ -1,6 +1,6 @@
 """Live web dashboard, standard library only (http.server).
 
-Run:  python3 main.py --demo --web      then open http://localhost:8765
+Run:  python3 main.py --dataset city.json --web      then open http://localhost:8765
 
 The page itself lives in ui/static/ (index.html, app.css, app.js) so it can
 be read and edited like any web page. This file is only the small server:

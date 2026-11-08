@@ -34,84 +34,58 @@ Every change is logged with a timestamp and an explanation. Components talk thro
 
 The same code runs on any dataset with the competition file structure. The dataset path is a command-line argument.
 
-## Requirements and dependencies
-- **Python 3.10 or newer.** Nothing to install: only the Python standard library is used. The modules used are `heapq`, `dataclasses`, `enum`, `json`, `argparse`, `cmd`, `shlex`, `random`, `re`, `math`, `collections`, `copy` and `difflib`. The web dashboard also uses `http.server`, `threading` and `urllib.parse`. The optional weather download (`--fetch-weather`) uses `urllib.request`, `ssl` and `datetime`. The tests also use `unittest`, `unittest.mock`, `tempfile`, `os`, `io`, `http.client` and `urllib.request`.
-- No third-party libraries.
+## Submission version
+This branch contains no bundled city dataset, demo requests, disruption scenarios, or saved weather/traffic observations. Supply any JSON dataset using the same structure as the competition Toronto dataset. All node IDs, roads, coordinates, locations, inventories and vehicles come from that input. Numeric and text IDs are supported. Embedded `emergencies` and `disruptions` lists are supported; otherwise the dashboard starts empty for you to add requests.
 
-## How to run (from this folder)
+Python 3.10+; standard library only. No installation step or API key is needed for simulation. Files under `ui/static/` are served locally, so the UI needs no CDN or internet connection.
+
+### Local use
+Run from the extracted project directory, replacing the dataset path with the provided file:
+```sh
+python main.py --dataset /path/to/dataset.json --web
 ```
-python3 --version                       # must be 3.10+
-python3 main.py --demo --run            # Dataset 1 + sample scenario, prints the event log and a final report
-python3 main.py --demo --run --quiet    # same, report only
-python3 main.py --demo                  # same scenario in the interactive CLI (type 'help')
-python3 main.py --demo --web            # same scenario in a live web dashboard: open http://localhost:8765
-python3 main.py                         # empty interactive CLI on Dataset 1 (add emergencies yourself)
-python3 -m unittest discover -s tests -v   # 142 automated tests, about 10 seconds (no internet needed)
+Open http://localhost:8765. For the terminal interface, omit `--web`. For batch processing:
+```sh
+python main.py --dataset /path/to/dataset.json --emergencies /path/to/requests.json --disruptions /path/to/events.json --run
 ```
+`--dataset` is required unless `DATASET_PATH` is set. A missing input produces a clear usage error instead of loading a sample. Explicit `--dataset` overrides the environment. Paths may be absolute, and the program can be launched from another working directory.
 
-### Dataset 2 (zero code changes)
+### Hosted / LAN use
+```sh
+python main.py --dataset /path/to/dataset.json --web --host 0.0.0.0 --port 8765
 ```
-python3 main.py --dataset path/to/dataset2.json --generate 10 --run      # random but repeatable scenario (seed 42)
-python3 main.py --dataset path/to/dataset2.json --emergencies E.json --disruptions D.json --run
-python3 main.py --dataset path/to/dataset2.json                          # interactive
+Other computers connect to the server address and port. On a managed host, set `DATASET_PATH` to a readable file on that server, then use `python main.py --web` as the start command. The platform's `PORT` automatically selects `0.0.0.0:$PORT`; `HOST`, `--host` and `--port` can override the bind settings. Health checks use `/healthz`. The included Render configuration asks for `DATASET_PATH`; provision your actual input file on the host before starting it.
+
+Docker, with the supplied dataset mounted read-only (replace `/absolute/input-folder` with your own folder):
+```sh
+docker build -t ironcladreturns .
+docker run --rm -p 8765:8765 -v /absolute/input-folder:/inputs:ro -e DATASET_PATH=/inputs/dataset.json ironcladreturns
 ```
-- `--generate N --seed S` builds requests and disruptions from whatever places, roads and vehicles that dataset contains.
-- If Dataset 2 embeds `emergencies` or `disruptions` lists, they are loaded automatically.
-- To change speed factors, units or fuel for Dataset 2, copy [config/config.example.json](config/config.example.json), edit it, and pass `--config my.json`. The algorithm code does not change.
+The dashboard uses same-origin requests and supports reverse-proxy event streams. For public access, use the hosting provider's HTTPS endpoint and restrict access to intended users: all connected users control the same simulation. The application keeps state in memory; use one process/instance for a shared simulation.
 
-### Live web dashboard
-Run `python3 main.py --demo --web` and open http://localhost:8765. It works with any dataset, needs no internet, and uses only the standard library on the server and plain HTML/CSS/JavaScript in the browser (`ui/static/`).
-- **Live city:** the server runs the city clock itself and starts immediately (add `--paused` to start paused).
-  - Every open browser tab shows the same city and updates by itself, every second.
-  - Anything one person changes appears in all tabs straight away.
-- **Controls:** Run live / Pause (Space), speed **Real time** (1 simulated minute per real minute), 1x, 5x or 15x, step +1 or +10 minutes, run to the end, and Reset (click twice) to start the same scenario again, running live if the dashboard was started live.
-- **City events menu:** restock a food hub with any amounts, set traffic on any road (×1 to ×5, 1 = clear), change the weather, close or reopen a road or an intersection, and break down or repair a vehicle. It uses the same checks as a disruptions file.
-- **Dataset menu (D):** every place (POI), food hub, vehicle, intersection (node) and road (edge), with all their ids, lat/lng, km, `w`, current travel time, highway/terrain and live status.
-  - Tables are searchable and sortable, and can be downloaded as CSV.
-  - Clicking a row shows it on the map.
-  - The Overview shows the dataset's sources, disclosure, loader warnings and the weather and rush-hour settings.
-- **Map:** zoom with the scroll wheel and drag to pan. It shows trucks moving along their remaining routes, request pins coloured by state (pulsing when Delayed, Re-Routing or Failed), hubs with live stock, closed roads in red, jams in orange, and a weather effect.
-- **Details panel:** click any request, truck, hub, road, intersection or place.
-  - A request shows the full timestamped timeline, the lifecycle stepper, *why it has this priority* (all six score factors plus waiting time), and its vehicles.
-  - Trucks, hubs and roads have action buttons: breakdown/repair, restock, close/reopen, traffic jam.
-- **New emergency form (N):** checked by the same validation as files and the CLI. Errors appear next to the form, including "did you mean" for unknown places.
-- **Also:** KPI cards, a priority queue, fleet and hub lists, a filterable live activity feed, pop-up alerts, a light/dark theme and a phone layout.
-- **Works locally (100% offline) and non-locally (LAN or cloud):**
-  - **Local & offline (no Wi-Fi needed):** `python3 main.py --demo --web` binds to `127.0.0.1:8765` with zero external CDN, font, or API calls.
-  - **Same Wi-Fi / LAN:** `python3 main.py --demo --web --host 0.0.0.0 --port 8765` lets other laptops or phones open `http://<your-ip>:8765`.
-  - **Cloud hosting (Render, Railway, Fly.io, AWS, Docker) or Cloudflare Tunnel:** when `PORT` is set by a cloud host, the server automatically binds `0.0.0.0:$PORT`, answers `/healthz` and `HEAD /`, and disables reverse-proxy buffering on `/events` (`X-Accel-Buffering: no`). Both [render.yaml](render.yaml) (free Render web service) and [Dockerfile](Dockerfile) are included.
+### Configuration and optional refreshes
+Algorithm defaults (scoring, speed fallback, fuel, capacity, timing, weather factors) are centralized in `loader/config_loader.py` and can be overridden using `--config /path/to/config.json`. These are configurable model parameters, not city-specific data. Input weights are used directly; no Toronto values are substituted.
 
-### Weather, rush hour and traffic
-- **Real weather (Open-Meteo, free, no API key):** `python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run` replays a real snowy Toronto morning that is saved in the repo, so it works offline and gives the same result every time.
-- **Any city and day:** `python3 main.py --dataset X --fetch-weather 2025-02-16 --run`. This downloads that day's hourly weather for the dataset's centre **once**, saves it to `samples/weather/`, and uses it.
-- **Rush hours:** `--config config/city_conditions.example.json` turns on typical weekday rush hours. The factors are team assumptions; tune them in the file.
-- **Traffic incidents:** `traffic` events in a disruptions file, or the `traffic` command in the CLI.
-- **What changes:** slower roads change ETAs, route choices for new trips, and the deadline part of each request's priority. Vehicles already on the road get updated ETAs.
+Traffic is optional and fetched separately:
+```sh
+python traffic_loader.py /path/to/dataset.json --output /path/to/traffic.json
+python main.py --dataset /path/to/traffic.json --web
+```
+Enter the TomTom key at the hidden prompt or set `TOMTOM_API_KEY`. TLS verification stays enabled. Failed edges retain their input weights; an entirely failed refresh preserves the previous output. The simulator never calls TomTom.
 
-### Interactive commands
-| Command | What it does |
-|---|---|
-| `status` | Clock, emergencies per state, fleet, stock, closures |
-| `queue` | Waiting requests in service order, with the score breakdown |
-| `list` / `show E3` | All emergencies / one emergency's details, trips and timestamped history |
-| `trips` | Vehicles on the road: load, route, ETA |
-| `vehicles` / `hubs` | Fleet table / stock left at each hub |
-| `route P0 P4` | Fastest route plus alternatives between places or nodes |
-| `events [N] [type]` | Recent events from the event bus |
-| `add` or `add key=value ...` | New emergency (guided form or one line); shows every validation error. In the form, an unknown location (e.g. "Toronto") is asked again with the closest matches (`y` accepts the first, `?` lists places, `cancel` stops) |
-| `close 42` / `close 11 12` / `reopen ...` | Close or reopen a road by edge id or by its two end nodes |
-| `closenode 20` / `reopennode 20` | Close or reopen an intersection |
-| `breakdown V2` / `repair V2` | Vehicle breakdown (its cargo is reassigned) / repair |
-| `restock P1 50 20` | Add normal and cold stock to a hub |
-| `weather heavy_snow` / `traffic 38 2.5` | Change the weather (all roads slower) / slow one road (`traffic 38 1` clears it) |
-| `tick [min]` / `run [HH:MM]` | Advance the clock / run to the end (or to a time) |
-| `load emergencies FILE` | Schedule requests or disruptions from a file |
-| `live on/off`, `report`, `quit` | Toggle live events, print the summary, exit |
+`--weather /path/to/weather.json` replays your saved weather; `--fetch-weather YYYY-MM-DD` explicitly downloads weather for the supplied dataset's coordinates into `weather-cache/`. No saved weather is bundled. Weather/rush-hour factors are configurable assumptions. `--generate N` is an optional scenario generator that derives locations from the loaded dataset; it does not load bundled scenarios.
+
+### Validation and packaging
+```sh
+python -m unittest discover -s tests -v
+python make_zip.py
+```
+The tests generate temporary synthetic inputs during execution; no sample dataset files are shipped. The ZIP builder uses an explicit source-file allowlist and excludes runtime datasets, downloaded weather, credentials, caches and test-generated files.
 
 ## Input formats
-**Dataset** ([data/toronto-downtown.json](data/toronto-downtown.json)): nodes, edges, pois, hubs and trucks, in the official structure. Unknown keys are ignored with a warning. Missing optional fields get defaults from config, and bad records are skipped with a message saying which record and why.
+**Dataset** (your supplied JSON file): nodes, edges, pois, hubs and trucks, in the official structure. Unknown keys are ignored with a warning. Missing optional fields get defaults from config, and bad records are skipped with a message saying which record and why.
 
-**Emergencies** (see [samples/emergencies.json](samples/emergencies.json)). The file can be a list, or an object with an `emergencies` list.
+**Emergencies** (your supplied JSON file). The file can be a list, or an object with an `emergencies` list.
 
 | Field | Rule |
 |---|---|
@@ -125,7 +99,7 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 | `severity` | 1 to 5 |
 | `deadline`, `submitted_at` | `"HH:MM"`, `"HH:MM:SS"`, `"HH:MM+1d"` (next day), an ISO time like `"2026-11-07T08:30"` (date ignored), or minutes. The deadline must come after submission. A missing submission time means "now" (in a file: the scenario start) |
 
-**Disruptions** (see [samples/disruptions.json](samples/disruptions.json)):
+**Disruptions** (your supplied JSON file):
 - `road_closure` and `road_reopen`, by `edge`, `edges`, or `a` + `b`
 - `node_closure` and `node_reopen`
 - `vehicle_breakdown` and `vehicle_repair`
@@ -135,43 +109,17 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
 
 Every disruption has a `time` and an optional `reason`.
 
-## Project structure
-```
-main.py            entry point (CLI arguments)
-data/              OFFICIAL dataset (unchanged)
-samples/           OUR sample emergencies/disruptions (AI-generated, not official)
-                   + samples/weather/: saved real weather (Open-Meteo)
-config/            example config overrides (incl. rush hours)
-core/              algorithms, no dataset-specific code:
-                   graph, routing (Dijkstra), emergency (validation), scoring,
-                   priority_queue (heapq), matcher (greedy), trips, state_machine,
-                   event_bus, disruptions, dispatcher, system (facade)
-loader/            dataset / config / input-file loading
-sim/               simulator + seeded scenario generator
-ui/                command-line dashboard (cli.py) + web dashboard server (web.py)
-                   + ui/static/: the dashboard page (index.html, app.css, app.js)
-tests/             unittest suite + Dataset-2-style fixture
-DECISIONS.md       algorithms, data structures, complexity, trade-offs
-PROGRESS.md        build status, file map, known issues, next steps
-make_zip.py        builds Ironcladreturns_Programming_Code.zip
-```
 
 ## Citations
-**Dataset.** `toronto-downtown.json` (Dataset 1) was provided by the MEC 2026 Programming Competition organisers. The sources listed inside it are:
-- City of Toronto Open Data, https://www.toronto.ca/city-government/data-research-maps/open-data/
-- Fort York Food Bank, https://www.fyfb.com/
-
-The dataset's own disclosure says it is a generated simulation: an approximate downtown street graph with illustrative depots and resources. It is not surveyed roads, live traffic, or real food-bank inventories.
-
-**Our own test data.** `samples/*.json` and `tests/fixtures/sparse_town.json` were written for this project (AI-assisted, see below). They are not official competition data.
-
 **Generative AI.**
 - **Claude (Anthropic, model *Claude Opus 5.5*, `claude-opus-5-5`)**, used via Claude Code on 2026-11-07, generated the initial draft of the modules, tests, sample scenarios, Open-Meteo weather snapshot integration, and documentation from the team's specification, implemented Round-1 review fixes, and drafted the redesigned web dashboard (`ui/web.py`, `ui/static/`).
 - **Google Antigravity (model *Gemini*)**, used on 2026-11-07, performed two rounds of code review against the competition abstract and rulebook, merged city-conditions into `main`, removed redundant CLI commands, and implemented Round-2 bug fixes and regression tests (`Trip.retime` multi-change ETA math, rush-hour clock sync, `Simulator.advance`, coordinate/config/input guards).
 - The team manually refactored and reviewed the source files. This section and [PROGRESS.md](PROGRESS.md) retain the history of AI contributions and the team’s verification.
 - No AI tool was used to write presentation scripts.
 
-**Weather data.** Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0. The saved file is `samples/weather/toronto-downtown_2025-02-16.json`. Weather codes follow the WMO code table used by Open-Meteo. The weather and rush-hour travel-time factors are our own assumptions, not measured data.
+- OpenAI Codex assisted with the standalone TomTom port, failed-refresh protection, dataset-independent submission packaging, and verification on 2026-11-07.
+
+Weather downloads use Open-Meteo (CC BY 4.0); no weather observations are included in this submission.
 
 **Algorithms and references.**
 - E. W. Dijkstra, "A note on two problems in connexion with graphs", *Numerische Mathematik* 1 (1959), for shortest paths.

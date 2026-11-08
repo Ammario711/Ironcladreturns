@@ -87,7 +87,7 @@ DEFAULT_CONFIG = {
         },
         # Rush hours: [{"start": "07:00", "end": "09:30", "factor": 1.3}, ...].
         # Empty by default so the dataset's w is used unchanged; see
-        # config/city_conditions.example.json for a filled-in example.
+        # your --config JSON file to configure time windows.
         "rush_hours": [],
         # Publish route-updated when a vehicle's ETA moves at least this many minutes.
         "eta_change_event_minutes": 1.0,
