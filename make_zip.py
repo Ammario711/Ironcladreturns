@@ -1,31 +1,25 @@
-"""Build the submission zip: python3 make_zip.py
+"""Build a source-only submission ZIP; never bundle runtime inputs or secrets."""
 
-Creates Ironcladreturns_Programming_Code.zip next to this file, containing
-the project inside an "Ironcladreturns/" folder. Skips caches, old zips,
-and hidden files. Re-run it after every change before submitting.
-"""
-
-import os
+from pathlib import Path
 import zipfile
 
 TEAM = "Ironcladreturns"
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, f"{TEAM}_Programming_Code.zip")
-SKIP_DIRS = {"__pycache__", ".git", ".idea", ".vscode"}
+HERE = Path(__file__).resolve().parent
+OUT = HERE / f"{TEAM}_Programming_Code.zip"
+ROOT_FILES = ("main.py", "traffic_loader.py", "make_zip.py", "README.md",
+              "DECISIONS.md", "PROGRESS.md", "Dockerfile", "render.yaml", ".dockerignore")
 
 
 def main():
-    count = 0
+    files = [HERE / name for name in ROOT_FILES]
+    for directory in ("core", "loader", "sim", "ui", "tests"):
+        files.extend((HERE / directory).rglob("*.py"))
+    files.extend(HERE / "ui" / "static" / name for name in ("index.html", "app.js", "app.css"))
+    files = sorted(set(files))
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as archive:
-        for folder, dirs, files in os.walk(HERE):
-            dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
-            for name in sorted(files):
-                if name.endswith((".zip", ".pyc")) or name.startswith("."):
-                    continue
-                path = os.path.join(folder, name)
-                archive.write(path, os.path.join(TEAM, os.path.relpath(path, HERE)))
-                count += 1
-    print(f"Wrote {OUT} ({count} files)")
+        for path in files:
+            archive.write(path, f"{TEAM}/{path.relative_to(HERE).as_posix()}")
+    print(f"Wrote {OUT} ({len(files)} source files; no datasets or sample scenarios)")
 
 
 if __name__ == "__main__":

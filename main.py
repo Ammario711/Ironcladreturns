@@ -1,14 +1,7 @@
-"""Entry point.
+"""Dataset-independent entry point. Supply --dataset FILE or DATASET_PATH.
 
-Examples (run from the project folder):
-  python3 main.py --demo --run                 # Dataset 1 + sample scenario, print everything
-  python3 main.py --demo                       # same scenario, interactive CLI
-  python3 main.py --demo --web                 # same scenario, live web dashboard (http://localhost:8765)
-  python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run   # real snowy morning
-  python3 main.py --dataset path/to/dataset2.json --generate 10 --run
-  python3 main.py --dataset X --emergencies E.json --disruptions D.json --run
-
-The dataset path is only an argument: Dataset 2 needs no code change.
+Local: python main.py --dataset city.json --web
+Hosted: set DATASET_PATH and PORT, then run python main.py --web
 """
 
 import argparse
@@ -31,9 +24,7 @@ from ui.cli import CrisisCLI, format_event
 from ui.web import Dashboard
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SAMPLE_EMERGENCIES = os.path.join(HERE, "samples", "emergencies.json")
-SAMPLE_DISRUPTIONS = os.path.join(HERE, "samples", "disruptions.json")
-WEATHER_DIR = os.path.join(HERE, "samples", "weather")
+WEATHER_DIR = os.path.join(HERE, "weather-cache")
 
 
 def default_bind():
@@ -51,11 +42,11 @@ def default_bind():
 def build_parser():
     default_host, default_port = default_bind()
     p = argparse.ArgumentParser(description="Urban Food Crisis Response and Routing System (team Ironcladreturns)")
-    p.add_argument("--dataset", default=os.path.join(HERE, "data", "toronto-downtown.json"),
-                   help="city dataset JSON (default: Dataset 1, downtown Toronto)")
+    dataset_path = os.environ.get("DATASET_PATH", "").strip() or None
+    p.add_argument("--dataset", default=dataset_path, required=dataset_path is None,
+                   help="city dataset JSON (required unless DATASET_PATH is set)")
     p.add_argument("--emergencies", action="append", default=[], help="emergency requests JSON (repeatable)")
     p.add_argument("--disruptions", action="append", default=[], help="disruption events JSON (repeatable)")
-    p.add_argument("--demo", action="store_true", help="also load samples/emergencies.json + samples/disruptions.json")
     p.add_argument("--generate", type=int, default=0, metavar="N", help="add N random emergencies (works on any dataset)")
     p.add_argument("--generate-disruptions", type=int, default=None, metavar="M", help="random disruptions (default N/2)")
     p.add_argument("--seed", type=int, default=42, help="random seed for --generate (same seed = same scenario)")
@@ -74,7 +65,7 @@ def build_parser():
     p.add_argument("--weather", metavar="FILE", help="replay a saved weather snapshot (see --fetch-weather)")
     p.add_argument("--fetch-weather", metavar="YYYY-MM-DD",
                    help="download that day's real hourly weather for the dataset's city from Open-Meteo "
-                        "(free, no key), save it under samples/weather/, and use it")
+                        "(free, no key), save it under weather-cache/, and use it")
     return p
 
 
@@ -123,8 +114,8 @@ def main(argv=None):
         print(f"  warning: {warning}")
 
     # Inputs: embedded in the dataset (if any) + files + generated.
-    emergency_files = list(args.emergencies) + ([SAMPLE_EMERGENCIES] if args.demo else [])
-    disruption_files = list(args.disruptions) + ([SAMPLE_DISRUPTIONS] if args.demo else [])
+    emergency_files = list(args.emergencies)
+    disruption_files = list(args.disruptions)
     try:
         emergencies = list(dataset.embedded_emergencies)
         disruptions = list(dataset.embedded_disruptions)

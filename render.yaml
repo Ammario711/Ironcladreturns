@@ -4,5 +4,8 @@ services:
     runtime: python
     plan: free
     buildCommand: python3 --version
-    startCommand: sh -c 'if [ -f samples/emergencies.json ]; then exec python3 main.py --demo --web; else exec python3 main.py --dataset data/toronto-downtown.json --emergencies tests/fixtures/toronto_emergencies.json --disruptions tests/fixtures/toronto_disruptions.json --web; fi'
+    startCommand: python3 main.py --web
     healthCheckPath: /healthz
+    envVars:
+      - key: DATASET_PATH
+        sync: false

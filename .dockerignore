@@ -1,0 +1,9 @@
+.git
+__pycache__
+**/__pycache__
+*.pyc
+*.zip
+.env
+.env.*
+weather-cache
+outputs
