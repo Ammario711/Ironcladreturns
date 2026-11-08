@@ -36,7 +36,20 @@ SAMPLE_DISRUPTIONS = os.path.join(HERE, "samples", "disruptions.json")
 WEATHER_DIR = os.path.join(HERE, "samples", "weather")
 
 
+def default_bind():
+    """Default (host, port) for --web: loopback locally (127.0.0.1:8765), or
+    0.0.0.0:$PORT automatically when hosted on a cloud platform."""
+    raw_port = os.environ.get("PORT", "").strip()
+    try:
+        port = int(raw_port) if raw_port else 8765
+    except ValueError:
+        port = 8765
+    host = os.environ.get("HOST", "").strip() or ("0.0.0.0" if raw_port else "127.0.0.1")
+    return host, port
+
+
 def build_parser():
+    default_host, default_port = default_bind()
     p = argparse.ArgumentParser(description="Urban Food Crisis Response and Routing System (team Ironcladreturns)")
     p.add_argument("--dataset", default=os.path.join(HERE, "data", "toronto-downtown.json"),
                    help="city dataset JSON (default: Dataset 1, downtown Toronto)")
@@ -52,7 +65,10 @@ def build_parser():
     p.add_argument("--quiet", action="store_true", help="batch mode: print only the final report")
     p.add_argument("--web", action="store_true",
                    help="live web dashboard (map, queue, events) instead of the text CLI")
-    p.add_argument("--port", type=int, default=8765, help="port for --web (default 8765)")
+    p.add_argument("--host", default=default_host,
+                   help="bind address for --web (default: 127.0.0.1 locally, or 0.0.0.0 when PORT is set)")
+    p.add_argument("--port", type=int, default=default_port,
+                   help="port for --web (default: PORT env var or 8765)")
     p.add_argument("--paused", action="store_true",
                    help="--web: start with the clock paused (default: the city runs live)")
     p.add_argument("--weather", metavar="FILE", help="replay a saved weather snapshot (see --fetch-weather)")
@@ -144,10 +160,10 @@ def main(argv=None):
 
     def make_world():
         """A fresh system + simulator with every input scheduled. Called once
-        now, and again by the dashboard's Reset button (the dataset is reloaded
+        now, and again by the dashboard's Reset button (the dataset is cloned
         because a run changes hub stock and vehicle positions)."""
         # raise_handler_errors=False: in live use one failing subscriber must not stop the system
-        fresh = CrisisResponseSystem(load_dataset(args.dataset, config), config,
+        fresh = CrisisResponseSystem(copy.deepcopy(dataset), config,
                                      bus=EventBus(raise_handler_errors=False))
         simulator = Simulator(fresh)
         for raw in copy.deepcopy(emergencies):
@@ -161,9 +177,10 @@ def main(argv=None):
 
     if args.web:
         try:
-            Dashboard(system, sim, make_world=make_world).serve(port=args.port, autoplay=not args.paused)
+            Dashboard(system, sim, make_world=make_world).serve(
+                port=args.port, host=args.host, autoplay=not args.paused)
         except OSError as exc:  # e.g. the port is already in use
-            print(f"ERROR: cannot start the dashboard on port {args.port}: {exc}", file=sys.stderr)
+            print(f"ERROR: cannot start the dashboard on {args.host}:{args.port}: {exc}", file=sys.stderr)
             return 2
         return 0
 

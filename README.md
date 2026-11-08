@@ -76,6 +76,10 @@ Run `python3 main.py --demo --web` and open http://localhost:8765. It works with
   - Trucks, hubs and roads have action buttons: breakdown/repair, restock, close/reopen, traffic jam.
 - **New emergency form (N):** checked by the same validation as files and the CLI. Errors appear next to the form, including "did you mean" for unknown places.
 - **Also:** KPI cards, a priority queue, fleet and hub lists, a filterable live activity feed, pop-up alerts, a light/dark theme and a phone layout.
+- **Works locally (100% offline) and non-locally (LAN or cloud):**
+  - **Local & offline (no Wi-Fi needed):** `python3 main.py --demo --web` binds to `127.0.0.1:8765` with zero external CDN, font, or API calls.
+  - **Same Wi-Fi / LAN:** `python3 main.py --demo --web --host 0.0.0.0 --port 8765` lets other laptops or phones open `http://<your-ip>:8765`.
+  - **Cloud hosting (Render, Railway, Fly.io, AWS, Docker) or Cloudflare Tunnel:** when `PORT` is set by a cloud host, the server automatically binds `0.0.0.0:$PORT`, answers `/healthz` and `HEAD /`, and disables reverse-proxy buffering on `/events` (`X-Accel-Buffering: no`). Both [render.yaml](render.yaml) (free Render web service) and [Dockerfile](Dockerfile) are included.
 
 ### Weather, rush hour and traffic
 - **Real weather (Open-Meteo, free, no API key):** `python3 main.py --demo --weather samples/weather/toronto-downtown_2025-02-16.json --run` replays a real snowy Toronto morning that is saved in the repo, so it works offline and gives the same result every time.
